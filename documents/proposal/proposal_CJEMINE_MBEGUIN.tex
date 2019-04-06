@@ -1,0 +1,65 @@
+\documentclass[twocolumn,superscriptaddress,aps]{revtex4-1}
+
+\usepackage[utf8]{inputenc}
+
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsthm}
+
+\usepackage{bbold}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{hyperref}
+
+\begin{document}
+
+
+% ==============================================================================
+
+\title{\Large{INFO8010: Project Proposal}}
+\vspace{1cm}
+\author{\small{\bf Corentin Jemine}}
+\affiliation{\texttt{cjemine@student.uliege.be} (\texttt{s123578})}
+\author{\small{\bf Mathias Beguin}}
+\affiliation{\texttt{Mathias.Beguin@student.uliege.be} (\texttt{s140309})}
+
+\maketitle
+
+% ==============================================================================
+
+\section{Task}
+We wish to experiment with source separation in polyphonic music. Given an audio waveform of a musical piece and the identity of an instrument present in the piece, our model is expected to generate an audio waveform of the performance of that instrument alone as if it had been recorded on its own. 
+
+One variation of this task, called "blind source separation", is to separate the instruments in the piece without having any information on the identity of the instruments or their number. We will not work with this blind context, and instead will either provide instrument identities from ground truth labels during training or through manual extraction at inference time.
+
+The instrument identities can be represented in several ways. A fixed-size table of the instruments can be learned and instruments can then be referenced by their index in that table. A standalone numerical representation can be used instead, such as a set of expertly tuned parameters or a machine learned embedding. The generalization ability of the model on the task of source separation depends greatly on this choice of representation. We have not yet decided on which to use.
+
+\section{Implementation}
+We wish to train the model using a dataset of both separate and joint audio tracks. Generation of such data is feasible without much effort: one can automatically generate audio tracks for different instruments and mix them to create songs. Arbitrary music generation can be achieved this way, or more advanced approaches can be used as to achieve musically pleasant songs. Alternatively, one can use existing datasets containing multitrack audio files (e.g. \cite{MedleyDB}). We also suggest the use of MIDI files, for which the audio tracks are already separated and a waveform can be easily generated.
+
+We want to work on the raw waveform rather than on a spectrogram, as is becoming increasingly common in sound-related deep learning applications. The model should be conditioned on an instrument identity and either convolve over the audio sequence or process it in a recurrent fashion while generating the output audio sequence. The model thus acts a transformer of the input sequence, and the input and output domains are identical.
+
+\section{Related works}
+We have found several related papers in the literature. 
+
+\cite{1803.00702}, \cite{1804.08300}, \cite{1804.09202} and \cite{1504.04658} propose approaches specific to separating the singing voice from the instruments. 
+
+\cite{1810.12947} investigates melody extraction.
+
+\cite{1804.03160} and \cite{1804.04121} demonstrate source separation paired with a corresponding video. \cite{1804.03160} disentangles speakers talking over each other while \cite{1804.04121} disentangles musical instruments playing together.
+
+\cite{1511.05520} proposes an approach to identify which instruments are present in a musical piece.
+
+\cite{1901.05061}, \cite{1811.03076}, \cite{1810.12187}, \cite{1807.02710}, \cite{1807.01898}, \cite{1806.10307}, \cite{1806.03185} and \cite{1805.08559} work on the same task as ours and \cite{1806.00273} additionally works in a blind setting as described before. Some of these methods operate on the raw waveform (e.g. \cite{1811.03076}, \cite{1810.12187}) and some on a spectrogram representation (e.g. \cite{1807.02710}, \cite{1805.08559}). The approach described in \cite{1811.03076} uses embeddings for instrument identities.
+
+
+
+% ==============================================================================
+
+\clearpage
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
