@@ -13,3 +13,4 @@
 *.bbl
 *.bcf
 venv
+mimi/soundfont/*.cfg
