@@ -1,44 +1,33 @@
 from scipy.io import wavfile
+from params import sample_rate, project_root
 from typing import List
+from mido import MidiFile
 import numpy as np
-import mido
 import os
 
-module_root_path = os.path.split(os.path.abspath(__file__))[0]  # mimi/
-cfg_file = os.path.join(module_root_path, "soundfont", "soundfont.cfg")  # mimi/soundfont/soundfont.cfg
-sf2_folder = os.path.join(module_root_path, "soundfont")  # mimi/soundfont/
-default_sf2 = "8MBGMSFX.SF2"  # 8MBGMSFX.SF2
+# Prepare the synthesizer config
+synthesizer_root = os.path.join(project_root, "synthesizer")
+config_fpath = os.path.join(synthesizer_root, "timidity.cfg")
+with open(config_fpath, 'w') as config:
+    config.write("dir \"%s\"\nsoundfont \"%s\"" % (synthesizer_root, "soundfont.sf2"))
 
-
-def set_soundfont(dir=None):
-    if dir is None:
-        with open(cfg_file, 'w') as f:
-            f.write("dir {} \nsoundfont \"{}\" amp=200%".format(sf2_folder, default_sf2))
-    else:
-        with open(cfg_file, 'w') as f:
-
-            folder = os.path.split(dir)[0]
-            sf2 = os.path.split(dir)[1]
-            f.write("dir {} \nsoundfont \"{}\" amp=200%".format(folder, sf2))
-set_soundfont()
-
-
-class MidiFile(mido.MidiFile):
+class Music:
     def __init__(self, filename=None):
-        mido.MidiFile.__init__(self, filename)
+        self.mid = MidiFile(filename)
         self._track_to_instrument = self._get_instrument_map()
         self.all_instruments = np.unique([i for i in self._track_to_instrument if i is not None])
+        self.wav_length = int(np.ceil(self.mid.length * sample_rate))
                 
     def _get_instrument_map(self):
         channel_to_instrument = [None] * 16
-        track_to_channel = [None] * len(self.tracks)
+        track_to_channel = [None] * len(self.mid.tracks)
         
         # Go through all events in the midi file. Will raise an exception if the midi is malformed.
         # It is expected that:
         #   - Only one instrument can play in a single track
         #   - A channel can be set to a single instrument once
         #   - The 10th channel (index 9) plays the Drums
-        for i, track in enumerate(self.tracks):
+        for i, track in enumerate(self.mid.tracks):
             for event in track:
                 # Any track that plays a note is an instrument track
                 if event.type == "note_on":
@@ -55,7 +44,14 @@ class MidiFile(mido.MidiFile):
         # Map tracks to instruments
         return [(None if c is None else channel_to_instrument[c]) for c in track_to_channel]
 
-    def generate_waveform(self, instruments: List[int]):
+    def generate_waveform(self, instruments: List[int], synchronized=True):
+        """
+        Synthesizes a waveform from the midi file with only a subset of instruments playing.
+        
+        :param instruments: 
+        :param synchronized: 
+        :return: 
+        """
         for instrument in instruments:
             if not instrument in self.all_instruments:
                 raise Exception("Instrument %d does not appear in this music")
@@ -64,9 +60,9 @@ class MidiFile(mido.MidiFile):
         temp_wav_fpath = "temp.wav"
         
         # Create a midi file with only the selected instruments and the metadata tracks
-        new_mid = mido.MidiFile(type=self.type, ticks_per_beat=self.ticks_per_beat,
-                                charset=self.charset)
-        new_mid.tracks = [t for t, i in zip(self.tracks, self._track_to_instrument) if
+        new_mid = MidiFile(type=self.mid.type, ticks_per_beat=self.mid.ticks_per_beat,
+                           charset=self.mid.charset)
+        new_mid.tracks = [t for t, i in zip(self.mid.tracks, self._track_to_instrument) if
                           i is None or i in instruments]
         new_mid.save(temp_mid_fpath)
         
@@ -78,12 +74,19 @@ class MidiFile(mido.MidiFile):
         # -OwM: use RIFF WAVE format, other formats have artifacts. M stands for mono.
         # -o: output filename
         os.system("timidity -c %s %s --preserve-silence --quiet=2 -A100 -OwM -o %s" % 
-                  (cfg_file, temp_mid_fpath, temp_wav_fpath))
+                  (config_fpath, temp_mid_fpath, temp_wav_fpath))
         
+        # Retrieve the waveform
         sr, wav = wavfile.read(temp_wav_fpath)
         wav = wav.astype(np.float32) / 32767    # 16 bits signed to 32 bits floating point
         wav = np.clip(wav, -1, 1)   # To correct finite precision errors
         
+        # Pad or trim the waveform to the length of the track
+        if len(wav) > self.wav_length:
+            wav = wav[:self.wav_length]
+        if len(wav) < self.wav_length:
+            wav = np.pad(wav, (0, self.wav_length - len(wav)), "constant")
+
         os.remove(temp_mid_fpath)
         os.remove(temp_wav_fpath)
 
