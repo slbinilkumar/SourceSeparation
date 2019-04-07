@@ -205,3 +205,17 @@ SynthPad = __SynthPad()
 SynthEffect = __SynthEffects()
 Ethnic = __Ethnic()
 Percussive = __Percussive()
+
+# Build an index of all instruments for fast retrieval
+all_instruments = [var for var in locals() if not var.startswith('_')]
+instrument_dict = dict()
+[instrument_dict.update(globals()[instrument].__dict__) for instrument in all_instruments]
+inverse_index = [None] * (max(instrument_dict.values()) + 1)
+for instrument_name, instrument_id in instrument_dict.items():
+    inverse_index[instrument_id] = instrument_name
+def get_instrument_name(instrument_id):
+    # This is something very specific in the MIDI format: anything on channel 10 is drums. For 
+    # convenience, we'll just code that as -1.
+    if instrument_id == -1:
+        return "Drums"
+    return inverse_index[instrument_id]

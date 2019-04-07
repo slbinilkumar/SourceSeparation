@@ -7,6 +7,7 @@ import tempfile
 from mido import Message, MetaMessage
 from mimi.MidiTrack import MidiTrack
 import sys
+from scipy.io import wavfile
 
 DEFAULT_TEMPO = 500000
 DEFAULT_TICKS_PER_BEAT = 480
@@ -503,14 +504,10 @@ class MidiFile(mido.MidiFile):
             scipy.misc.toimage(array[idx, :, :], cmin=0.0).save('%s%d.png' % (filename, idx))
 
     def save_mp3(self, filename="out.mp3", sr=16000):
-        # set cfg_file to mimi/soundfont/soundfont.cfg
-        module_root_path = os.path.split(os.path.abspath(__file__))[0]
-        cfg_file = os.path.join(module_root_path, "soundfont", "soundfont.cfg")
-
         # save mid file to tmp folder
         tmp_dir = tempfile.mkdtemp()
         filename = os.path.abspath(filename)
-        tmp_file = os.path.join(tmp_dir,"%s_tmp.mid" % filename)
+        tmp_file = os.path.join(tmp_dir, "%s_tmp.mid" % filename)
         self.save(tmp_file)
 
         # get total time to trim the output mp3
@@ -522,10 +519,10 @@ class MidiFile(mido.MidiFile):
                 # use -map_channel 0.0.0 to map left channel to mono tone mp3 file
                 os.system(
                     f"timidity -c {cfg_file} {tmp_file} -Ow -o - | ffmpeg -t {total_time} -i - -f "
-                    f"mp3 -ar {sr} -ab 256k -map_channel 0.0.0 {filename}")
+                    f"mp3 -ar {sr} -ab 512k -map_channel 0.0.0 {filename}")
             else:
                 os.system(f"timidity -c {cfg_file} {tmp_file} -Ow -o - | ffmpeg -t {total_time} "
-                          f"-i - -f mp3 -ar {sr} -ab 256k {filename}")
+                          f"-i - -f mp3 -ar {sr} -ab 512k {filename}")
         except Exception:
             os.remove(tmp_file)
             os.removedirs(tmp_dir)
@@ -533,18 +530,59 @@ class MidiFile(mido.MidiFile):
         os.remove(tmp_file)
         os.removedirs(tmp_dir)
 
-    # def get_waveform(self, filename="tmp"):
-    #     from subprocess import check_output
-    #     tmp_file = "%s_tmp.mid" % filename
-    #     self.save(tmp_file)
-    #     raw_wav = check_output("timidity -c %s %s -s 16000 -Or -o -" % (cfg_file, tmp_file))
-    #     import array
-    #     a = array.array('h', raw_wav)
-    #     import sounddevice as sd
-    #     3+3
+    def save_wav(self, filename="out.wav", sr=16000):
+        # save mid file to tmp folder
+        tmp_dir = tempfile.mkdtemp()
+        filename = os.path.abspath(filename)
+        tmp_file = os.path.join(tmp_dir, "%s_tmp.mid" % filename)
+        self.save(tmp_file)
 
-    def play(self, filename="tmp"):
-        tmp_file = "%s_tmp.mid" % filename
+        # get total time to trim the output mp3
+        total_time = self.get_seconds()
+
+        try:
+            _platform = platform.system()
+            if _platform == "linux" or _platform == "linux2" or _platform == "Linux":
+                # use -map_channel 0.0.0 to map left channel to mono tone mp3 file
+                os.system(
+                    f"timidity -c {cfg_file} {tmp_file} -Ow -o - | ffmpeg -t {total_time} -i - -f "
+                    f"wav -ar {sr} -map_channel 0.0.0 {filename}")
+            else:
+                os.system(f"timidity -c {cfg_file} {tmp_file} -Ow -o - | ffmpeg -t {total_time} "
+                          f"-i - -f wav -ar {sr} {filename}")
+        except Exception:
+            os.remove(tmp_file)
+            os.removedirs(tmp_dir)
+
+        os.remove(tmp_file)
+        os.removedirs(tmp_dir)
+
+    def generate_waveform(self):
+        # Note: unlike self.play(), this preserves silences at the start of the track.
+        temp_mid = "temp.mid"
+        temp_wav = "temp.wav"
+        
+        self.save(temp_mid)
+        # --preserve-silence: if the track starts with a silence, do not skip to the first note. 
+        # This keeps all instruments synced.
+        # --quiet=2: do not output anything to stdout
+        # -A100: set the volume to 100% (default 70%)
+        # -OwM: use RIFF WAVE format, other formats have artifacts. M stands for mono.
+        # -o: output filename
+        os.system("timidity -c %s %s --preserve-silence --quiet=2 -A100 -OwM -o %s" % 
+                  (cfg_file, temp_mid, temp_wav))
+        
+        sr, wav = wavfile.read(temp_wav)
+        wav = wav.astype(np.float32) / 32767    # 16 bits signed to 32 bits floating point
+        wav = np.clip(wav, -1, 1)   # To correct finite precision errors
+        
+        os.remove(temp_mid)
+        os.remove(temp_wav)
+
+        return wav, sr
+
+    def play(self):
+        tmp_file = "temp.mid"
         self.save(tmp_file)
 
         _platform = platform.system()
@@ -562,7 +600,6 @@ class MidiFile(mido.MidiFile):
 
 class SingleTrackMidiFile(MidiFile):
     # strict Midi
-
     def __init__(self, filename=None, instrument=None):
         MidiFile.__init__(self, filename=filename)
 
