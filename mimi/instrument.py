@@ -213,9 +213,10 @@ instrument_dict = dict()
 inverse_index = [None] * (max(instrument_dict.values()) + 1)
 for instrument_name, instrument_id in instrument_dict.items():
     inverse_index[instrument_id] = instrument_name
+instrument_dict["Drums"] = -1
 def get_instrument_name(instrument_id):
-    # This is something very specific in the MIDI format: anything on channel 10 is drums. For 
-    # convenience, we'll just code that as -1.
     if instrument_id == -1:
         return "Drums"
     return inverse_index[instrument_id]
+def get_instrument_id(instrument_name):
+    return instrument_dict[instrument_name]
