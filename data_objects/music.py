@@ -48,14 +48,19 @@ class Music:
         """
         Synthesizes a waveform from the midi file with only a subset of instruments playing.
         
-        :param instruments: 
-        :param synchronized: 
-        :return: 
+        :param instruments: a list of instrument IDs to be included in the waveform.
+        :param synchronized: if False, the audio will be generated starting at the first note the 
+        instruments play, and will end on the last note. If True, the audio will start at the 
+        beginning of the music (even if silent) and will end at the end of the music. All audio 
+        waveforms from the same Music generated with synchronize=True will thus be of the exact 
+        same length.
+        :return: the waveform as a float32 numpy array of shape (n_samples,) 
         """
         for instrument in instruments:
             if not instrument in self.all_instruments:
                 raise Exception("Instrument %d does not appear in this music")
             
+        # TODO: adapt this for multithreading and put in the OS' temp directory
         temp_mid_fpath = "temp.mid"
         temp_wav_fpath = "temp.wav"
         
@@ -67,27 +72,32 @@ class Music:
         new_mid.save(temp_mid_fpath)
         
         # Synthesize the midi to a waveform
-        # --preserve-silence: if the track starts with a silence, do not skip to the first note. 
-        # This keeps all instruments synced.
-        # --quiet=2: do not output anything to stdout
-        # -A100: set the volume to 100% (default 70%)
+        # -c: config file, contains the path to the soundfont.
+        # --quiet=2: do not output anything to stdout.
+        # -A100: set the volume to 100% (default 70%).
         # -OwM: use RIFF WAVE format, other formats have artifacts. M stands for mono.
-        # -o: output filename
-        os.system("timidity -c %s %s --preserve-silence --quiet=2 -A100 -OwM -o %s" % 
-                  (config_fpath, temp_mid_fpath, temp_wav_fpath))
-        
+        # --preserve-silence: if the track starts with a silence, do not skip to the first note. 
+        options = f"-c {config_fpath} --quiet=2 -A100 -OwM"
+        options += " --preserve-silence" if synchronized else ""
+        timidity_fpath = os.path.join("synthesizer", "timidity")    # Path to the executable
+        os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath}")
+        os.remove(temp_mid_fpath)
+
         # Retrieve the waveform
-        sr, wav = wavfile.read(temp_wav_fpath)
+        try:
+            sr, wav = wavfile.read(temp_wav_fpath)
+        except FileNotFoundError:
+            raise Exception("Failed to generate a waveform. Make sure that the Timidity "
+                            "executable in synthesizer/ is operational, and that timidity.cfg "
+                            "points to the soundfont in the same directory.")
+        os.remove(temp_wav_fpath)
         wav = wav.astype(np.float32) / 32767    # 16 bits signed to 32 bits floating point
         wav = np.clip(wav, -1, 1)   # To correct finite precision errors
         
         # Pad or trim the waveform to the length of the track
-        if len(wav) > self.wav_length:
+        if synchronized and len(wav) > self.wav_length:
             wav = wav[:self.wav_length]
-        if len(wav) < self.wav_length:
+        if synchronized and len(wav) < self.wav_length:
             wav = np.pad(wav, (0, self.wav_length - len(wav)), "constant")
 
-        os.remove(temp_mid_fpath)
-        os.remove(temp_wav_fpath)
-
-        return wav, sr
+        return wav
