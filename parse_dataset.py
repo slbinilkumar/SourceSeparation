@@ -7,7 +7,7 @@ import os
 dataset_root = r"E:\Datasets\Midi"
 
 index_fpath = os.path.join(dataset_root, "midi_index.txt")
-index_file = open(index_fpath, 'w')
+index_file = open(index_fpath, 'a', encoding='utf-8')
 mid_fpaths = glob(os.path.join(dataset_root, "**/*.mid"), recursive=True)
 valid_count = 0
 for fpath in tqdm(mid_fpaths, "Parsing midi files"):
