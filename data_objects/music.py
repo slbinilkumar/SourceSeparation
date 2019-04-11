@@ -12,8 +12,8 @@ with open(config_fpath, 'w') as config:
     config.write("dir \"%s\"\nsoundfont \"%s\"" % (synthesizer_root, "soundfont.sf2"))
 
 class Music:
-    def __init__(self, filename=None):
-        self.mid = MidiFile(filename)
+    def __init__(self, fpath=None):
+        self.mid = MidiFile(fpath)
         self._track_to_instrument = self._get_instrument_map()
         self.all_instruments = np.unique([i for i in self._track_to_instrument if i is not None])
         self.wav_length = int(np.ceil(self.mid.length * sample_rate))
