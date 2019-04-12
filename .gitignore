@@ -14,3 +14,4 @@
 *.bcf
 venv
 mimi/soundfont/*.cfg
+pop_midi_dataset_ismir
