@@ -4,8 +4,8 @@ from params import sample_rate
 
 # Replace with any midi file
 fpath = r"E:\Datasets\Midi\FF\FF1-7 (fanmade)\FF7jenova.mid"
-# fpath = r"E:\Datasets\Midi\pop_midi_dataset_ismir\cariart\full\3c4070cbe161ed8fbbb9da677bdc6cefa262335a.mid"
-# fpath = r"E:\Datasets\Midi\pop_midi_dataset_ismir\cariart\full\2fb38fc9cc041622d3451f773966eeaf7e1db5d6.mid"
+fpath = r"E:\Datasets\Midi\pop_midi_dataset_ismir\TV_Themes_www.tv-timewarp.co.uk_MIDIRip\bod" \
+        r"\Bod.mid"
 
 mid = Music(fpath)
 print("Loaded track %s" % fpath)
