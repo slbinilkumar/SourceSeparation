@@ -27,6 +27,7 @@ class Music:
         #   - Only one instrument can play in a single track
         #   - A channel can be set to a single instrument once
         #   - The 10th channel (index 9) plays the Drums
+        #   - Any channel whose instrument isn't specified defaults to piano (id: 0)
         for i, track in enumerate(self.mid.tracks):
             for event in track:
                 # Any track that plays a note is an instrument track
@@ -40,6 +41,9 @@ class Music:
                            channel_to_instrument[event.channel] == event.program
                     channel_to_instrument[event.channel] = event.program
         channel_to_instrument[9] = -1   # Special case of the drums
+        
+        # Replace missing instruments by the piano
+        channel_to_instrument = [c if c is not None else 0 for c in channel_to_instrument]
                     
         # Map tracks to instruments
         return [(None if c is None else channel_to_instrument[c]) for c in track_to_channel]
