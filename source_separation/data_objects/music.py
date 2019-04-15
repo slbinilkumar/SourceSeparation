@@ -1,15 +1,21 @@
-from source_separation.params import sample_rate, project_root
+from source_separation.params import sample_rate, package_root
 from scipy.io import wavfile
+from tempfile import gettempdir
+from pathlib import Path
 from typing import List
 from mido import MidiFile
+from uuid import uuid4
 import numpy as np
 import os
 
 # Prepare the synthesizer config
-synthesizer_root = os.path.join(project_root, "synthesizer")
-config_fpath = os.path.join(synthesizer_root, "timidity.cfg")
+synthesizer_root = package_root.joinpath("synthesizer")
+config_fpath = synthesizer_root.joinpath("timidity.cfg")
 with open(config_fpath, 'w') as config:
     config.write("dir \"%s\"\nsoundfont \"%s\"" % (synthesizer_root, "soundfont.sf2"))
+    
+_temp_dir = Path(gettempdir(), "source_separation")
+_temp_dir.mkdir(exist_ok=True)
 
 class Music:
     def __init__(self, fpath=None):
@@ -63,12 +69,13 @@ class Music:
         for instrument in instruments:
             if not instrument in self.all_instruments:
                 raise Exception("Instrument %d does not appear in this music")
-            
-        # TODO: adapt this for multithreading and put in the OS' temp directory
-        temp_mid_fpath = "temp.mid"
-        temp_wav_fpath = "temp.wav"
         
-        # Create a midi file with only the selected instruments and the metadata tracks
+        # Create a unique identifier for the temporary filename, so as to allow multithreading.
+        unique_id = uuid4()
+        temp_mid_fpath = Path(_temp_dir, "%s.mid" % unique_id)
+        temp_wav_fpath = Path(_temp_dir, "%s.wav" % unique_id)
+        
+        # Create a midi file with only the selected instruments and the metadata tracks.
         new_mid = MidiFile(type=self.mid.type, ticks_per_beat=self.mid.ticks_per_beat,
                            charset=self.mid.charset)
         new_mid.tracks = [t for t, i in zip(self.mid.tracks, self._track_to_instrument) if
@@ -83,9 +90,9 @@ class Music:
         # --preserve-silence: if the track starts with a silence, do not skip to the first note. 
         options = f"-c {config_fpath} --quiet=2 -A100 -OwM"
         options += " --preserve-silence" if synchronized else ""
-        timidity_fpath = os.path.join("synthesizer", "timidity")    # Path to the executable
+        timidity_fpath = Path(synthesizer_root, "timidity")     # Path to the executable
         os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath}")
-        os.remove(temp_mid_fpath)
+        temp_mid_fpath.unlink()     # This is the delete function in pathlib
 
         # Retrieve the waveform
         try:
@@ -94,7 +101,7 @@ class Music:
             raise Exception("Failed to generate a waveform. Make sure that the Timidity "
                             "executable in synthesizer/ is operational, and that timidity.cfg "
                             "points to the soundfont in the same directory.")
-        os.remove(temp_wav_fpath)
+        temp_wav_fpath.unlink()
         wav = wav.astype(np.float32) / 32767    # 16 bits signed to 32 bits floating point
         wav = np.clip(wav, -1, 1)   # To correct finite precision errors
         
