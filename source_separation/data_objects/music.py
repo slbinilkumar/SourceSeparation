@@ -1,5 +1,5 @@
+from source_separation.params import sample_rate, project_root
 from scipy.io import wavfile
-from params import sample_rate, project_root
 from typing import List
 from mido import MidiFile
 import numpy as np
@@ -47,7 +47,7 @@ class Music:
                     
         # Map tracks to instruments
         return [(None if c is None else channel_to_instrument[c]) for c in track_to_channel]
-
+    
     def generate_waveform(self, instruments: List[int], synchronized=True):
         """
         Synthesizes a waveform from the midi file with only a subset of instruments playing.

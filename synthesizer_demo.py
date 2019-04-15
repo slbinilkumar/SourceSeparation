@@ -1,11 +1,11 @@
+from source_separation.data_objects import Music, get_instrument_name
+from source_separation.params import sample_rate
 import sounddevice as sd
-from data_objects import Music, get_instrument_name
-from params import sample_rate
 
 # Replace with any midi file
 fpath = r"E:\Datasets\Midi\FF\FF1-7 (fanmade)\FF7jenova.mid"
-fpath = r"E:\Datasets\Midi\pop_midi_dataset_ismir\TV_Themes_www.tv-timewarp.co.uk_MIDIRip\bod" \
-        r"\Bod.mid"
+# fpath = r"E:\Datasets\Midi\pop_midi_dataset_ismir\TV_Themes_www.tv-timewarp.co.uk_MIDIRip\bod" \
+#         r"\Bod.mid"
 
 mid = Music(fpath)
 print("Loaded track %s" % fpath)

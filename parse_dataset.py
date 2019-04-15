@@ -1,4 +1,4 @@
-from data_objects import Music
+from source_separation.data_objects import Music
 from random import random
 from glob import glob
 from tqdm import tqdm

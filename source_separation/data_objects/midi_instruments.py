@@ -1,4 +1,5 @@
 _instrument_to_id = {
+    'Drums': -1,    # This one isn't the midi standard, just a choice we're going with.
     # Piano
     'AcousticGrandPiano': 0,
     'BrightAcousticPiano': 1,
@@ -149,11 +150,7 @@ for instrument_name, instrument_id in _instrument_to_id.items():
     _inverse_index[instrument_id] = instrument_name
     
 def get_instrument_name(instrument_id):
-    if instrument_id == -1:
-        return "Drums"
     return _inverse_index[instrument_id]
 
 def get_instrument_id(instrument_name):
-    if instrument_name == "Drums":
-        return -1
     return _instrument_to_id[instrument_name]

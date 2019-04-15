@@ -1,8 +1,7 @@
 import numpy as np
 import tensorflow as tf
-
-from params import sample_rate
-from data_objects import Music
+from source_separation.params import sample_rate
+from source_separation.data_objects import Music
 
 
 def preprocess_waveform(waveform, duration):
@@ -53,6 +52,6 @@ def generate_dataset(index_filepath, batch_size, sample_duration=5, shuffle_buff
 
     dataset = dataset.repeat()
     dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+    dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)   # Is it going to sing?
 
     return dataset

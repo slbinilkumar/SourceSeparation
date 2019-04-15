@@ -1,8 +1,7 @@
 import tensorflow.keras as keras
 import tensorflow.keras.layers as kl
-
-from data_objects.dataset import generate_dataset
-from params import sample_rate
+from source_separation.data_objects.dataset import generate_dataset
+from source_separation.params import sample_rate
 
 BATCH_SIZE = 32
 SAMPLE_DURATION = 5
