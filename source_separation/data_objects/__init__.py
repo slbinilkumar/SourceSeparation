@@ -1,2 +1,3 @@
-from source_separation.data_objects.music import Music
 from source_separation.data_objects.midi_instruments import get_instrument_name, get_instrument_id
+from source_separation.data_objects.midi_dataset import MidiDataset
+from source_separation.data_objects.music import Music
