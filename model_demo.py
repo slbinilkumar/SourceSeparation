@@ -2,6 +2,9 @@ from source_separation.data_objects import MidiDataset, get_instrument_id
 from source_separation.params import sample_rate
 import tensorflow.keras.layers as kl
 import tensorflow.keras as keras
+# Fixme: remove these two imports later
+import tensorflow.python.keras.api._v2.keras.layers as kl
+from tensorflow.python.keras.api._v2 import keras
 from pathlib import Path
 
 # TODO: put as argument with argparse
@@ -25,27 +28,38 @@ if __name__ == "__main__":
     )
     
     # Yields a single batch. Both x_train and y_train are of shape (batch_size, n_samples)
-    x_train, y_train = next(iter(dataset))  
+    x_train, y_train = next(iter(dataset)) 
     
-    # If you want to have a look at the data
-    import sounddevice as sd
-    for i in range(5):
-        print("Playing chunk %d" % i)
-        sd.play(x_train[i], 44100, blocking=True)
+    
+    # # If you want to have a look at the data
+    # import sounddevice as sd
+    # for i in range(5):
+    #     print("Playing chunk %d" % i)
+    #     sd.play(x_train[i], 44100, blocking=True)
 
+    # The convolutional layer expects a "channels" dimension.
+    x_train, y_train = x_train[..., None], y_train[..., None]
+    
     # Example model
+    identity_layer = kl.Conv1D(1, 1, input_shape=(chunk_duration * sample_rate, 1), use_bias=False)
+    
     model = keras.Sequential([
-        kl.InputLayer(input_shape=(chunk_duration * sample_rate,)),
-        kl.Dense(1024, activation='relu'),
-        kl.Dense(1024, activation='relu'),
-        kl.Dense(chunk_duration * sample_rate, activation='tanh')
+        # kl.InputLayer(input_shape=(chunk_duration * sample_rate,)),
+        identity_layer,
+        # kl.Dense(1024, activation='relu'),
+        # kl.Dense(1024, activation='relu'),
+        # kl.Dense(chunk_duration * sample_rate, activation='tanh')
     ])
+    
+    # This simply makes the model output the identity
+    import numpy as np
+    identity_layer.set_weights(np.ones((1, 1, 1, 1)))
 
     model.compile(
         optimizer='adam',
         loss='mse',
-        metrics=['accuracy']
+        metrics=['mse'],
     )
 
     # TODO Compute appropriate value for the # of steps
-    model.fit(x_train, y_train, epochs=2, steps_per_epoch=10)  
+    model.fit(x_train, y_train, epochs=4, steps_per_epoch=10)  
