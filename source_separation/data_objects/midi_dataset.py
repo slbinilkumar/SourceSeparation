@@ -77,7 +77,7 @@ class MidiDataset(DatasetV1Adapter):
             selector = all if mode == "and" else any
             # If this line causes PyCharm to throw SystemErrors, add PYDEVD_USE_FRAME_EVAL with 
             # value NO as environment variable in the config 
-            if selector((i in instruments) for i in midi_instruments):
+            if selector((i in midi_instruments) for i in instruments):
                 yield midi_fpath
     
     def _waveform_to_chunks(self, wav):
