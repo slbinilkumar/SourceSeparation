@@ -40,6 +40,8 @@ if __name__ == "__main__":
     #     sd.play(x_train[i], 44100, blocking=True)
     
     # Example model
+    identity_layer = kl.Conv1D(1, 1, input_shape=(chunk_duration * sample_rate, 1), use_bias=False)
+    
     model = keras.Sequential([
         kl.Reshape((chunk_duration * sample_rate, 1)),
         kl.Conv1D(1, 1, input_shape=(chunk_duration * sample_rate, 1), use_bias=False),
