@@ -91,7 +91,7 @@ class Music:
         options = f"-c {config_fpath} --quiet=2 -A100 -OwM"
         options += " --preserve-silence" if synchronized else ""
         timidity_fpath = Path(synthesizer_root, "timidity")     # Path to the executable
-        os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath}")
+        os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath} >NUL")
         temp_mid_fpath.unlink()     # This is the delete function in pathlib
 
         # Retrieve the waveform
