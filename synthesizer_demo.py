@@ -1,6 +1,7 @@
 from source_separation.data_objects import Music, get_instrument_name
-from source_separation.params import sample_rate
 import sounddevice as sd
+
+sample_rate = 44100
 
 # Replace with any midi file
 fpath = r"E:\Datasets\Midi\FF\FF1-7 (fanmade)\FF7jenova.mid"
@@ -9,7 +10,7 @@ fpath = r"E:\Datasets\Midi\FF\FF1-7 (fanmade)\FF7jenova.mid"
 
 mid = Music(fpath)
 print("Loaded track %s" % fpath)
-        
+
 # Generate an audio waveform for each track
 instrument_wavs = []
 for instrument_id in mid.all_instruments:
@@ -20,7 +21,7 @@ for instrument_id in mid.all_instruments:
 
 # Play all instruments seperately
 print("Playing individual tracks. Some tracks may be silent at the start.")
-duration = 7    # In seconds
+duration = 7  # In seconds
 for wav, instrument_id in zip(instrument_wavs, mid.all_instruments):
     instrument_name = get_instrument_name(instrument_id)
     print("   Now playing %d seconds of the %s track" % (duration, instrument_name))

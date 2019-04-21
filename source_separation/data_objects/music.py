@@ -1,4 +1,3 @@
-from source_separation.params import sample_rate, package_root
 from scipy.io import wavfile
 from tempfile import gettempdir
 from pathlib import Path
@@ -9,25 +8,26 @@ import numpy as np
 import os
 
 # Prepare the synthesizer config
-synthesizer_root = package_root.joinpath("synthesizer")
+synthesizer_root = Path(__file__).parent.parent.absolute().joinpath("synthesizer")
 config_fpath = synthesizer_root.joinpath("timidity.cfg")
 with open(config_fpath, 'w') as config:
     config.write("dir \"%s\"\nsoundfont \"%s\"" % (synthesizer_root, "soundfont.sf2"))
-    
+
 _temp_dir = Path(gettempdir(), "source_separation")
 _temp_dir.mkdir(exist_ok=True)
 
+
 class Music:
-    def __init__(self, fpath=None):
+    def __init__(self, sample_rate, fpath=None):
         self.mid = MidiFile(fpath)
         self._track_to_instrument = self._get_instrument_map()
         self.all_instruments = np.unique([i for i in self._track_to_instrument if i is not None])
         self.wav_length = int(np.ceil(self.mid.length * sample_rate))
-                
+
     def _get_instrument_map(self):
         channel_to_instrument = [None] * 16
         track_to_channel = [None] * len(self.mid.tracks)
-        
+
         # Go through all events in the midi file. Will raise an exception if the midi is malformed.
         # It is expected that:
         #   - Only one instrument can play in a single track
@@ -40,20 +40,20 @@ class Music:
                 if event.type == "note_on":
                     assert track_to_channel[i] is None or track_to_channel[i] == event.channel
                     track_to_channel[i] = event.channel
-                    
+
                 # Register instruments being set
                 if event.type == "program_change":
                     assert channel_to_instrument[event.channel] is None or \
                            channel_to_instrument[event.channel] == event.program
                     channel_to_instrument[event.channel] = event.program
-        channel_to_instrument[9] = -1   # Special case of the drums
-        
+        channel_to_instrument[9] = -1  # Special case of the drums
+
         # Replace missing instruments by the piano
         channel_to_instrument = [c if c is not None else 0 for c in channel_to_instrument]
-                    
+
         # Map tracks to instruments
         return [(None if c is None else channel_to_instrument[c]) for c in track_to_channel]
-    
+
     def generate_waveform(self, instruments: List[int], synchronized=True):
         """
         Synthesizes a waveform from the midi file with only a subset of instruments playing.
@@ -69,19 +69,19 @@ class Music:
         for instrument in instruments:
             if not instrument in self.all_instruments:
                 raise Exception("Instrument %d does not appear in this music")
-        
+
         # Create a unique identifier for the temporary filename, so as to allow multithreading.
         unique_id = uuid4()
         temp_mid_fpath = Path(_temp_dir, "%s.mid" % unique_id)
         temp_wav_fpath = Path(_temp_dir, "%s.wav" % unique_id)
-        
+
         # Create a midi file with only the selected instruments and the metadata tracks.
         new_mid = MidiFile(type=self.mid.type, ticks_per_beat=self.mid.ticks_per_beat,
                            charset=self.mid.charset)
         new_mid.tracks = [t for t, i in zip(self.mid.tracks, self._track_to_instrument) if
                           i is None or i in instruments]
         new_mid.save(temp_mid_fpath)
-        
+
         # Synthesize the midi to a waveform
         # -c: config file, contains the path to the soundfont.
         # --quiet=2: do not output anything to stdout.
@@ -90,9 +90,9 @@ class Music:
         # --preserve-silence: if the track starts with a silence, do not skip to the first note. 
         options = f"-c {config_fpath} --quiet=2 -A100 -OwM"
         options += " --preserve-silence" if synchronized else ""
-        timidity_fpath = Path(synthesizer_root, "timidity")     # Path to the executable
+        timidity_fpath = Path(synthesizer_root, "timidity")  # Path to the executable
         os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath} >NUL")
-        temp_mid_fpath.unlink()     # This is the delete function in pathlib
+        temp_mid_fpath.unlink()  # This is the delete function in pathlib
 
         # Retrieve the waveform
         try:
@@ -102,9 +102,9 @@ class Music:
                             "executable in synthesizer/ is operational, and that timidity.cfg "
                             "points to the soundfont in the same directory.")
         temp_wav_fpath.unlink()
-        wav = wav.astype(np.float32) / 32767    # 16 bits signed to 32 bits floating point
-        wav = np.clip(wav, -1, 1)   # To correct finite precision errors
-        
+        wav = wav.astype(np.float32) / 32767  # 16 bits signed to 32 bits floating point
+        wav = np.clip(wav, -1, 1)  # To correct finite precision errors
+
         # Pad or trim the waveform to the length of the track
         if synchronized and len(wav) > self.wav_length:
             wav = wav[:self.wav_length]

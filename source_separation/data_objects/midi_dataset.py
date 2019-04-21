@@ -1,14 +1,14 @@
-from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter 
+from tensorflow.python.data.ops.dataset_ops import DatasetV1Adapter
 from source_separation.data_objects.music import Music
-from source_separation.params import sample_rate
 from pathlib import Path
 from typing import List
 import tensorflow as tf
 import numpy as np
 
+
 class MidiDataset(DatasetV1Adapter):
-    def __init__(self, root: Path, is_train: bool, chunk_duration: int, 
-                 source_instruments: List[int], target_instruments: List[int], batch_size: int,
+    def __init__(self, root: Path, is_train: bool, chunk_duration: int,
+                 source_instruments: List[int], target_instruments: List[int], batch_size: int, sample_rate: int,
                  n_threads=4, shuffle_buffer=512):
         """
         Creates a dataset subclassing tf.data.Dataset that synthesizes instrument tracks from midi
@@ -37,20 +37,21 @@ class MidiDataset(DatasetV1Adapter):
         """
         self.root = root
         self.chunk_duration = chunk_duration
-        
+        self.sample_rate = sample_rate
+
         # Todo: later, think about how the instruments should be selected
         self.source_instruments = source_instruments
         self.target_instruments = target_instruments
         assert all((i in source_instruments) for i in target_instruments), \
             "Some target instruments are not in the set of the source instruments."
-        
+
         # Build the index: a list of tuples (fpath, instruments) 
         self.index = self._build_index(root, is_train)
-        
+
         # Create the tf.data.Dataset object
         dataset = self._create_dataset(batch_size, n_threads, shuffle_buffer)
         super().__init__(dataset)
-        
+
     def _build_index(self, root: Path, is_train: bool):
         """
         Yields midi filepaths in the dataset that contain a specific set of instruments.
@@ -59,10 +60,10 @@ class MidiDataset(DatasetV1Adapter):
         index_fpath = root.joinpath(index_fname)
         with index_fpath.open("r") as index_file:
             index = [line.split(":") for line in index_file]
-        index = [(root.joinpath(fpath.replace('"', '')), 
+        index = [(root.joinpath(fpath.replace('"', '')),
                   list(map(int, instruments.split(',')))) for fpath, instruments in index]
         return index
-        
+
     def _get_files_by_instruments(self, instruments, mode="and"):
         """
         Yields midi filepaths in the dataset that contain a specific set of instruments.
@@ -79,19 +80,19 @@ class MidiDataset(DatasetV1Adapter):
             # value NO as environment variable in the config 
             if selector((i in midi_instruments) for i in instruments):
                 yield midi_fpath
-    
+
     def _waveform_to_chunks(self, wav):
-        chunk_length = self.chunk_duration * sample_rate
+        chunk_length = self.chunk_duration * self.sample_rate
         padding = chunk_length - (len(wav) % chunk_length)
         wav = np.append(wav, np.zeros(padding))
         return np.vstack(np.split(wav, len(wav) / chunk_length))
-    
+
     def _create_sample(self, midi_fpath):
         # Load the midi file from disk
         if isinstance(midi_fpath, tf.Tensor):
             midi_fpath = midi_fpath.numpy().decode()
-        music = Music(midi_fpath)
-        
+        music = Music(sample_rate=self.sample_rate, fpath=midi_fpath)
+
         # Generate a waveform for the reference (source) audio and the target audio the network
         # had to produce.
         # TODO: use the audio mask (see audio.py) so as to not generate too much audio with
@@ -99,21 +100,22 @@ class MidiDataset(DatasetV1Adapter):
         source_wav = music.generate_waveform(self.source_instruments)
         target_wav = music.generate_waveform(self.target_instruments)
         assert len(source_wav) == len(target_wav)
-        
+
         # Split the waveforms into short chunks of equal duration
-        source_chunks = self._waveform_to_chunks(source_wav) 
+        source_chunks = self._waveform_to_chunks(source_wav)
         target_chunks = self._waveform_to_chunks(target_wav)
         assert source_wav.shape == target_wav.shape
 
         return source_chunks, target_chunks
-        
+
     def _create_dataset(self, batch_size: int, n_threads: int, shuffle_buffer: int):
         # The source is a generator of midi filepaths (converted to tensorflow string tensors)
         def generator():
             for fpath in self._get_files_by_instruments(self.source_instruments):
                 yield tf.constant(str(fpath), dtype=tf.string)
+
         dataset = tf.data.Dataset.from_generator(generator, tf.string)
-        
+
         # The midis are then loaded in memory, a source and target waveform is generated for each,
         # and these waveforms are split in chunks of equal size.
         dataset = dataset.map(lambda midi_fpath: tf.py_function(
@@ -122,11 +124,11 @@ class MidiDataset(DatasetV1Adapter):
             (tf.float32, tf.float32)
         ), n_threads)
         # Todo: if needed for debugging purposes, attach the source midi filepath to each chunk.
-        
+
         # We flatten the dataset to obtain a dataset of chunks. It is important to do this step
         # before shuffling, so as to allow chunks from different songs to be mixed in a same batch.
         dataset = dataset.flat_map(lambda x, y: (tf.data.Dataset.from_tensor_slices((x, y))))
-    
+
         # Todo: analyze whether it's better to have repeat here, or just after the line 
         #   Dataset.from_generator. I think it does not make any difference, because all the
         #   functions chained above are generators, but I'm not 100% sure.
@@ -135,6 +137,6 @@ class MidiDataset(DatasetV1Adapter):
         # A bigger buffer gives a better randomization but takes more memory
         dataset = dataset.repeat().shuffle(buffer_size=shuffle_buffer)
         dataset = dataset.batch(batch_size)
-        dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE) # Is it going to sing?
-    
+        dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)  # Is it going to sing?
+
         return dataset
