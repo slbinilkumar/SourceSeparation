@@ -6,6 +6,17 @@ from typing import List
 import tensorflow as tf
 import numpy as np
 
+
+# Samples below this value are considered to be 0
+silence_threshold = 1e-4        
+
+# If more than this proportion of the waveform is equivalent between the source and the target 
+# waveform, the sample is discarded.
+chunk_equal_prop_max = 0.65 
+# If more than this proportion of the target sample is silence, the sample is discarded.
+chunk_silence_prop_max = 0.4
+
+
 class MidiDataset(DatasetV1Adapter):
     def __init__(self, root: Path, is_train: bool, chunk_duration: int, 
                  source_instruments: List[int], target_instruments: List[int], batch_size: int,
@@ -37,6 +48,8 @@ class MidiDataset(DatasetV1Adapter):
         """
         self.root = root
         self.chunk_duration = chunk_duration
+        self.log_chunks_accepted = 0
+        self.log_chunks_total = 0
         
         # Todo: later, think about how the instruments should be selected
         self.source_instruments = source_instruments
@@ -79,12 +92,20 @@ class MidiDataset(DatasetV1Adapter):
             # value NO as environment variable in the config 
             if selector((i in midi_instruments) for i in instruments):
                 yield midi_fpath
-    
-    def _waveform_to_chunks(self, wav):
-        chunk_length = self.chunk_duration * sample_rate
-        padding = chunk_length - (len(wav) % chunk_length)
-        wav = np.append(wav, np.zeros(padding))
-        return np.vstack(np.split(wav, len(wav) / chunk_length))
+                
+    @staticmethod
+    def _debug_compare_chunks(source_chunk, target_chunk):
+        zero_prop = lambda chunk: np.sum(np.abs(chunk) < silence_threshold) / len(chunk)
+        zero_source_prop = zero_prop(source_chunk)
+        zero_target_prop = zero_prop(target_chunk)
+        similarity_prop = zero_prop(source_chunk - target_chunk)
+        np.sum(np.abs(source_chunk - target_chunk) < silence_threshold) / len(target_chunk)
+        print("Proportion in the source that is silence: %.2f%%" % (zero_source_prop * 100))
+        print("Proportion in the target that is silence: %.2f%%" % (zero_target_prop * 100))
+        print("Proportion of the chunk that is equal: %.2f%%" % (similarity_prop * 100))
+        
+    def _debug_accept_rate(self):
+        print("Accepted: %6d   Total: %6d" % (self.log_chunks_accepted, self.log_chunks_total))
     
     def _create_sample(self, midi_fpath):
         # Load the midi file from disk
@@ -94,18 +115,40 @@ class MidiDataset(DatasetV1Adapter):
         
         # Generate a waveform for the reference (source) audio and the target audio the network
         # had to produce.
-        # TODO: use the audio mask (see audio.py) so as to not generate too much audio with
-        #   no instruments played.
         source_wav = music.generate_waveform(self.source_instruments)
         target_wav = music.generate_waveform(self.target_instruments)
         assert len(source_wav) == len(target_wav)
         
-        # Split the waveforms into short chunks of equal duration
-        source_chunks = self._waveform_to_chunks(source_wav) 
-        target_chunks = self._waveform_to_chunks(target_wav)
-        assert source_wav.shape == target_wav.shape
-
-        return source_chunks, target_chunks
+        # Pad waveforms to a multiple of the chunk size
+        chunk_size = self.chunk_duration * sample_rate
+        padding = chunk_size - (len(source_wav) % chunk_size)
+        source_wav = np.append(source_wav, np.zeros(padding))
+        target_wav = np.append(target_wav, np.zeros(padding))
+        
+        # Iterate over the waveforms to create chunks
+        source_chunks, target_chunks = [], []
+        for i in range(0, len(source_wav), chunk_size):
+            source_chunk, target_chunk = source_wav[i:i + chunk_size], target_wav[i:i + chunk_size]
+            self.log_chunks_total += 1
+            
+            # Compute what proportion of the waveform is repeated without change in the target 
+            # waveform. 
+            abs_diff = np.abs(source_chunk - target_chunk)
+            equal_prop = np.sum(abs_diff < silence_threshold) / len(abs_diff)
+            if equal_prop >= chunk_equal_prop_max:
+                continue
+                
+            # Compute what proportion of the target waveform is silence.
+            silence_prop = np.sum(np.abs(target_chunk) < silence_threshold) / len(target_chunk)
+            if silence_prop >= chunk_silence_prop_max:
+                continue
+                
+            # Accept samples that were not discarded
+            self.log_chunks_accepted += 1
+            source_chunks.append(source_chunk)
+            target_chunks.append(target_chunk)
+            
+        return np.array(source_chunks), np.array(target_chunks)
         
     def _create_dataset(self, batch_size: int, n_threads: int, shuffle_buffer: int):
         # The source is a generator of midi filepaths (converted to tensorflow string tensors)
@@ -114,7 +157,7 @@ class MidiDataset(DatasetV1Adapter):
                 yield tf.constant(str(fpath), dtype=tf.string)
         dataset = tf.data.Dataset.from_generator(generator, tf.string)
         
-        # The midis are then loaded in memory, a source and target waveform is generated for each,
+        # The midis are then loaded in memory, a source and a target waveform is generated for each,
         # and these waveforms are split in chunks of equal size.
         dataset = dataset.map(lambda midi_fpath: tf.py_function(
             self._create_sample,

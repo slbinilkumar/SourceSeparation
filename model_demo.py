@@ -35,7 +35,8 @@ if __name__ == "__main__":
     # # If you want to have a look at the data
     # import sounddevice as sd
     # x_train, y_train = next(iter(dataset))
-    # for i in range(5):
+    # dataset._debug_accept_rate()
+    # for i in range(15):
     #     print("Playing chunk %d" % i)
     #     sd.play(x_train[i], 44100, blocking=True)
     
