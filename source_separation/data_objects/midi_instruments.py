@@ -1,5 +1,5 @@
 _instrument_to_id = {
-    'Drums': -1,    # This one isn't the midi standard, just a choice we're going with.
+    'Drums': -1,  # This one isn't the midi standard, just a choice we're going with.
     # Piano
     'AcousticGrandPiano': 0,
     'BrightAcousticPiano': 1,
@@ -148,9 +148,18 @@ _instrument_to_id = {
 _inverse_index = [0] * len(_instrument_to_id)
 for instrument_name, instrument_id in _instrument_to_id.items():
     _inverse_index[instrument_id] = instrument_name
-    
+
+
 def get_instrument_name(instrument_id):
     return _inverse_index[instrument_id]
 
+
 def get_instrument_id(instrument_name):
     return _instrument_to_id[instrument_name]
+
+
+if __name__ == "__main__":
+    import pprint
+
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(_instrument_to_id)

@@ -14,4 +14,5 @@
 *.bcf
 venv
 mimi/soundfont/*.cfg
-pop_midi_dataset_ismir
+dataset/
+source_separation/synthesizer/timidity.cfg
