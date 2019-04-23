@@ -1,1 +1,0 @@
-- We either use floating point data or use a mu-law. I don't know how mu-law works on music, gotta try it. Maybe for music it's common to use floating-point, as the range is wider than in speech.

@@ -18,8 +18,8 @@ chunk_silence_prop_max = 0.4
 
 class MidiDataset(DatasetV1Adapter):
     def __init__(self, root: Path, is_train: bool, chunk_duration: int,
-                 source_instruments: List[int], target_instruments: List[int], batch_size: int, sample_rate: int,
-                 n_threads=4, shuffle_buffer=512):
+                 source_instruments: List[int], target_instruments: List[int], batch_size: int, 
+                 sample_rate: int, n_threads=4, shuffle_buffer=512):
         """
         Creates a dataset subclassing tf.data.Dataset that synthesizes instrument tracks from midi
         files. The instruments to generate must be selected. Yields pairs of fixed-size segments 
@@ -50,6 +50,8 @@ class MidiDataset(DatasetV1Adapter):
         self.log_chunks_accepted = 0
         self.log_chunks_total = 0
         self.sample_rate = sample_rate
+        # Todo: add as arg
+        self.max_length = 30 * 60
 
         # Todo: later, think about how the instruments should be selected
         self.source_instruments = source_instruments
@@ -105,13 +107,19 @@ class MidiDataset(DatasetV1Adapter):
         print("Proportion of the chunk that is equal: %.2f%%" % (similarity_prop * 100))
         
     def _debug_accept_rate(self):
-        print("Accepted: %6d   Total: %6d" % (self.log_chunks_accepted, self.log_chunks_total))
+        from threading import current_thread
+        print("%s: Accepted: %6d   Total: %6d" % 
+              (current_thread().name, self.log_chunks_accepted, self.log_chunks_total))
     
     def _create_sample(self, midi_fpath):
         # Load the midi file from disk
         if isinstance(midi_fpath, tf.Tensor):
             midi_fpath = midi_fpath.numpy().decode()
         music = Music(sample_rate=self.sample_rate, fpath=midi_fpath)
+        
+        # Ignore songs that are too long (prevents corrupted midis from blocking the sampling)
+        if music.mid.length > self.max_length:
+            return np.array([]), np.array([]) 
 
         # Generate a waveform for the reference (source) audio and the target audio the network
         # had to produce.

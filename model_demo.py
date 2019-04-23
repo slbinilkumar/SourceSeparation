@@ -24,6 +24,7 @@ if __name__ == "__main__":
         # Fixme: don't forget to put a larger buffer size later, we put a small one 
         #  for quicker debugging only.
         shuffle_buffer=args.batch_size,
+        n_threads=1,
     )
 
     # # If you want to have a look at the data
@@ -34,21 +35,39 @@ if __name__ == "__main__":
     #     print("Playing chunk %d" % i)
     #     sd.play(x_train[i], 44100, blocking=True)
 
-    # Example model
-    identity_layer = kl.Conv1D(1, 1, input_shape=(args.chunk_duration * args.sample_rate, 1), use_bias=False)
-
     model = keras.Sequential([
         kl.Reshape((args.chunk_duration * args.sample_rate, 1)),
-        kl.Conv1D(1, 1, input_shape=(args.chunk_duration * args.sample_rate, 1), use_bias=False),
+        # kl.Conv1D(
+        #     filters=30,
+        #     # kernel_size=1,
+        #     kernel_size=args.sample_rate // 10,     # Window of 1/10th of a second 
+        # ),
+        kl.Conv1D(
+            filters=1,
+            kernel_size=1,
+        ),
         kl.Reshape((args.chunk_duration * args.sample_rate,)),
     ])
 
+    # TODO: this will be moved later, just testing here
+    import tensorflow as tf
+    def spectrogram(wav, win_size, hop_size, amin=1e-10, top_db=80.0):
+        stft = tf.transpose(tf.signal.stft(wav, win_size, hop_size, win_size), (1, 0))
+        power = tf.square(tf.abs(stft))
+        log_spec = tf.math.log(tf.maximum(amin, power / tf.reduce_max(power)))
+        log_spec = 10.0 * log_spec / tf.math.log(tf.constant(10.))
+        return tf.maximum(log_spec, tf.reduce_max(log_spec) - top_db)
+
+    def loss(y_true, y_pred):
+        spec = lambda wav: spectrogram(wav, 44100 // 20, 44100 // 80)
+        loss = tf.reduce_mean(tf.square(tf.map_fn(spec, y_true) - tf.map_fn(spec, y_pred)))
+        return loss
+
     model.compile(
         optimizer='adam',
-        loss='mse',
-        metrics=['mse'],
+        loss=loss,
     )
-
+    
     model.fit_generator(
         dataset,
         steps_per_epoch=args.validate_steps,
