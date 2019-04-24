@@ -24,7 +24,7 @@ if __name__ == "__main__":
         # Fixme: don't forget to put a larger buffer size later, we put a small one 
         #  for quicker debugging only.
         shuffle_buffer=args.batch_size,
-        n_threads=1,
+        n_threads=-1,
     )
 
     # # If you want to have a look at the data
@@ -37,11 +37,11 @@ if __name__ == "__main__":
 
     model = keras.Sequential([
         kl.Reshape((args.chunk_duration * args.sample_rate, 1)),
-        # kl.Conv1D(
-        #     filters=30,
-        #     # kernel_size=1,
-        #     kernel_size=args.sample_rate // 10,     # Window of 1/10th of a second 
-        # ),
+        kl.Conv1D(
+            filters=5,
+            kernel_size=args.sample_rate // 10,     # Window of 1/10th of a second 
+            padding="same"
+        ),
         kl.Conv1D(
             filters=1,
             kernel_size=1,
@@ -58,19 +58,29 @@ if __name__ == "__main__":
         log_spec = 10.0 * log_spec / tf.math.log(tf.constant(10.))
         return tf.maximum(log_spec, tf.reduce_max(log_spec) - top_db)
 
-    def loss(y_true, y_pred):
+    def loss_fn(y_true, y_pred):
         spec = lambda wav: spectrogram(wav, 44100 // 20, 44100 // 80)
         loss = tf.reduce_mean(tf.square(tf.map_fn(spec, y_true) - tf.map_fn(spec, y_pred)))
         return loss
 
     model.compile(
         optimizer='adam',
-        loss=loss,
+        loss=loss_fn,
     )
     
-    model.fit_generator(
-        dataset,
-        steps_per_epoch=args.validate_steps,
-        epochs=args.train_steps // args.validate_steps,
-        shuffle=False,
-    )
+    for step, (xi_train, yi_train) in enumerate(iter(dataset)):
+        print("Step %d" % step, end="")
+        loss = model.train_on_batch(xi_train, yi_train)
+        print("   Loss: %.4f" % loss)
+        print("Waiting for next batch...")
+    
+    
+    # for i, _ in enumerate(iter(dataset)):
+    #     print(i)
+    # 
+    # model.fit_generator(
+    #     dataset,
+    #     steps_per_epoch=args.validate_steps,
+    #     epochs=args.train_steps // args.validate_steps,
+    #     shuffle=False,
+    # )
