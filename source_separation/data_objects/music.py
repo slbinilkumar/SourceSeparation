@@ -68,7 +68,7 @@ class Music:
         """
         for instrument in instruments:
             if not instrument in self.all_instruments:
-                raise Exception("Instrument %d does not appear in this music")
+                raise Exception("Instrument %d does not appear in this music" % instrument)
 
         # Create a unique identifier for the temporary filename, so as to allow multithreading.
         unique_id = uuid4()
@@ -81,7 +81,7 @@ class Music:
         new_mid.tracks = [t for t, i in zip(self.mid.tracks, self._track_to_instrument) if
                           i is None or i in instruments]
         new_mid.save(temp_mid_fpath)
-
+        
         # Synthesize the midi to a waveform
         # -c: config file, contains the path to the soundfont.
         # --quiet=2: do not output anything to stdout.
@@ -91,7 +91,7 @@ class Music:
         options = f"-c {config_fpath} --quiet=2 -A100 -OwM"
         options += " --preserve-silence" if synchronized else ""
         timidity_fpath = Path(synthesizer_root, "timidity")  # Path to the executable
-        os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath} >NUL")
+        os.system(f"{timidity_fpath} {temp_mid_fpath} {options} -o {temp_wav_fpath} > NUL")
         temp_mid_fpath.unlink()  # This is the delete function in pathlib
 
         # Retrieve the waveform
@@ -110,5 +110,5 @@ class Music:
             wav = wav[:self.wav_length]
         if synchronized and len(wav) < self.wav_length:
             wav = np.pad(wav, (0, self.wav_length - len(wav)), "constant")
-
+            
         return wav
