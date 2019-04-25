@@ -1,13 +1,13 @@
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
 import librosa.display
 import librosa
+import torch
 
 fpath =  r"D:\Users\Corentin\Music\Pure White Poison.mp3"
 wav, sr = librosa.load(fpath, 44100)
 wav = wav[:100000]
-wav_t = tf.convert_to_tensor(wav)
+wav_t = torch.tensor(wav)
 
 
 def spectrogram(wav, win_size, hop_size, amin=1e-10, top_db=80.0):
