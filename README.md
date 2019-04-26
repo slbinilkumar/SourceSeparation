@@ -1,2 +1,2 @@
-## Music source seperatation
+## Music source separation
 
