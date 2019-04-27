@@ -1,18 +1,11 @@
-from source_separation.data_objects import MidiDataset, get_instrument_id
-from source_separation.hparams import hparams
-from source_separation.parser import parse_args
+from source_separation.data_objects import MidiDataset
 from source_separation.model import Model
 from pathlib import Path
-import torch
 import numpy as np
+import torch
 
 
-if __name__ == "__main__":
-    args = parse_args()
-    source_instruments = args.source_instruments
-    target_instruments = args.target_instruments
-    get_instruments_id = lambda l: list(map(get_instrument_id, l.split(",")))
-    
+def train(args, hparams):
     dataset = MidiDataset(
         root=args.dataset_root,
         is_train=True,
@@ -20,8 +13,8 @@ if __name__ == "__main__":
     )
     
     dataloader = dataset.generate(
-        source_instruments=get_instruments_id(source_instruments),
-        target_instruments=get_instruments_id(target_instruments),
+        source_instruments=args.source_instruments,
+        target_instruments=args.target_instruments,
         batch_size=args.batch_size,
         n_threads=4,
         chunk_reuse_factor=3,   # Higher: more efficient data usage but more redundancy in the 

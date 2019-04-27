@@ -9,12 +9,14 @@ class Model(nn.Module):
         self.hparams = hparams
         
         # Network defition
+        self.pad = nn.ConstantPad1d(self.hparams.sample_rate // 40, 0)
         self.conv1 = nn.Conv1d(in_channels=1,
+                               out_channels=10,
+                               kernel_size=self.hparams.sample_rate // 20)
+        self.conv2 = nn.Conv1d(in_channels=10,
                                out_channels=1,
-                               kernel_size=1,
-                               bias=False)
+                               kernel_size=1)                      
         
-        self.conv1.weight.data[...] = -0.5       # For testing the identity
         
         # self.lstm = nn.LSTM(input_size=mel_n_channels,
         #                     hidden_size=model_hidden_size,
@@ -27,8 +29,9 @@ class Model(nn.Module):
         # Obtain a tensor of shape (batch, channels, seq_length)
         x = x.unsqueeze(1)
         
-        # Single unit for predicting the identity
+        x = self.pad(x)
         x = self.conv1(x)
+        x = self.conv2(x)
         
         # Obtain a tensor of shape (batch, seq_length)
         x = x.squeeze()
