@@ -13,6 +13,5 @@
 *.bbl
 *.bcf
 venv
-mimi/soundfont/*.cfg
 dataset/
 source_separation/synthesizer/timidity.cfg

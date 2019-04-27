@@ -1,4 +1,3 @@
-import numpy as np
 import matplotlib.pyplot as plt
 import librosa.display
 import librosa
@@ -16,6 +15,14 @@ def spectrogram(wav, win_size, hop_size, top_db=80.0):
     log_spec = 10. * torch.log10(power / power.max())
     torch.max(log_spec, log_spec.max() - top_db, out=log_spec)
     return log_spec
+    ## Fixme: Do you gain anything from inplace operations? Gotta check.
+    ##      https://discuss.pytorch.org/t/31728
+    # out = (stft ** 2).sum(dim=2)
+    # out /= out.max()
+    # torch.log10(out, out=out)
+    # out *= 10
+    # torch.max(out, out.max() - top_db, out=out)
+    # return out
 
 d = spectrogram(wav_t, sr // 20, sr // 80).numpy()
 

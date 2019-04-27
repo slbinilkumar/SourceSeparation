@@ -20,7 +20,7 @@ if __name__ == "__main__":
     
     dataloader = dataset.generate(
         source_instruments=get_instruments_id(source_instruments),
-        target_instruments=get_instruments_id(target_instruments),
+        target_instruments=get_instruments_id(source_instruments),  # Todo: testing, change it back
         batch_size=args.batch_size,
         n_threads=4,
         music_buffer_size=8,    # Careful, high values can have a high RAM impact
@@ -36,8 +36,8 @@ if __name__ == "__main__":
     # quit()
 
     # Create the model and the optimizer
-    model = Model().cuda()
-    learning_rate_init = 0.001
+    model = Model(hparams).cuda()
+    learning_rate_init = 0.01
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate_init)
     init_step = 1
     save_every = 100
@@ -63,12 +63,12 @@ if __name__ == "__main__":
         x, y_true = torch.from_numpy(batch).cuda()
         y_pred = model(x)
         loss = model.loss(y_pred, y_true)
-        print(loss.item)
+        print("Step %d   Loss %.4f" % (step, loss.item()))
+        print("Conv1 weight: %.4f" % model.conv1.weight.item())
     
         # Backward pass
         model.zero_grad()
         loss.backward()
-        model.do_gradient_ops()
         optimizer.step()
     
         # Overwrite the latest version of the model

@@ -71,7 +71,9 @@ class MidiDataset:
         # If quickstart is enabled, load a precomputed buffer from disk or build one if it 
         # doesn't exist yet.
         if quickstart:
-            buffer_fpath = Path("quickstart.npy")
+            quickstart_id = "_%s_%s" % ("-".join(map(str, source_instruments)),
+                                        "-".join(map(str, target_instruments)))
+            buffer_fpath = Path("quickstart%s.npy" % quickstart_id)
             if not buffer_fpath.exists():
                 print("Creating an initial buffer for quickstarting the next runs...", end=" ")
                 buffer = []
@@ -81,7 +83,7 @@ class MidiDataset:
                 print("Done!")
             else:
                 print("Loading from quickstart buffer.")
-                buffer = np.load(buffer_fpath)
+                buffer = list(np.load(buffer_fpath))
         
         # We wrap the generator inside an explicit generator function. We could simply make this 
         # function (MidiDataset.generate()) the generator itself, but splitting the initialization
@@ -173,11 +175,12 @@ class MidiDataset:
             source_chunk, target_chunk = source_wav[i:i + chunk_size], target_wav[i:i + chunk_size]
             
             # Compute what proportion of the waveform is repeated without change in the target 
-            # waveform. 
-            abs_diff = np.abs(source_chunk - target_chunk)
-            equal_prop = np.sum(abs_diff < self.hparams.silence_threshold) / len(abs_diff)
-            if equal_prop >= self.hparams.chunk_equal_prop_max:
-                continue
+            # waveform. This only applies if we're not predicting the identity.
+            if not np.array_equal(source_instruments, target_instruments):
+                abs_diff = np.abs(source_chunk - target_chunk)
+                equal_prop = np.sum(abs_diff < self.hparams.silence_threshold) / len(abs_diff)
+                if equal_prop >= self.hparams.chunk_equal_prop_max:
+                    continue
                 
             # Compute what proportion of the target waveform is silence.
             silence_prop = np.sum(np.abs(target_chunk) < self.hparams.silence_threshold) \
