@@ -1,6 +1,6 @@
 from source_separation.data_objects import get_instrument_id
 from source_separation.hparams import hparams
-from source_separation.train import train
+from source_separation.test import test
 from pathlib import Path
 import argparse
 
@@ -11,7 +11,7 @@ if __name__ == '__main__':
     
     
     # Parse the arguments from cli
-    parser = argparse.ArgumentParser(description="Trains the source separation model.",
+    parser = argparse.ArgumentParser(description="Tests the source separation model.",
                                      formatter_class=MyFormatter)
     parser.add_argument("dataset_root",
                         help="Path to a directory containing the 'pop_midi_dataset_ismir' dataset "
@@ -24,11 +24,8 @@ if __name__ == '__main__':
                         help="Identical to source_instruments but for the target instruments to"
                              "predict. All target instruments must appear as source intruments.")
     
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--chunk_duration", default=5, type=int)
+    parser.add_argument("--chunk_duration", default=8, type=int)
     parser.add_argument("--sample_rate", default=44100, type=int)
-    parser.add_argument("--train_steps", default=20000, type=int)
-    parser.add_argument("--validate_steps", default=1000, type=int)
     
     # Format the arguments
     args = parser.parse_args()
@@ -38,4 +35,4 @@ if __name__ == '__main__':
     args.target_instruments = get_instruments_id(args.target_instruments)
     
     # Being the training
-    train(args, hparams)
+    test(args, hparams)
