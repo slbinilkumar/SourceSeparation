@@ -4,6 +4,20 @@ import librosa
 import torch
 
 
+from pathos.threading import ThreadPool
+pool = ThreadPool(4)
+
+import time
+def func(x):
+    time.sleep(1)
+    return x
+
+a = pool.uimap(func, range(10))
+print(list(a))
+
+quit()
+
+
 fpath =  r"D:\Users\Corentin\Music\Pure White Poison.mp3"
 wav, sr = librosa.load(fpath, 44100)
 wav = wav[:100000]
@@ -15,14 +29,6 @@ def spectrogram(wav, win_size, hop_size, top_db=80.0):
     log_spec = 10. * torch.log10(power / power.max())
     torch.max(log_spec, log_spec.max() - top_db, out=log_spec)
     return log_spec
-    ## Fixme: Do you gain anything from inplace operations? Gotta check.
-    ##      https://discuss.pytorch.org/t/31728
-    # out = (stft ** 2).sum(dim=2)
-    # out /= out.max()
-    # torch.log10(out, out=out)
-    # out *= 10
-    # torch.max(out, out.max() - top_db, out=out)
-    # return out
 
 d = spectrogram(wav_t, sr // 20, sr // 80).numpy()
 

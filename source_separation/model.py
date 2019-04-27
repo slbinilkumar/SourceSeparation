@@ -57,14 +57,6 @@ class Model(nn.Module):
         power = (stft ** 2).sum(dim=-1)
         log_spec = 10. * torch.log10(torch.clamp(power / power.max(), 1e-10))
         return torch.max(log_spec, log_spec.max() - self.hparams.top_db)
-        ## Fixme: Do you gain anything from inplace operations? Gotta check.
-        ##      https://discuss.pytorch.org/t/31728
-        # out = (stft ** 2).sum(dim=2)
-        # out /= out.max()
-        # torch.log10(out, out=out)
-        # out *= 10
-        # torch.max(out, out.max() - self.hparams.top_db, out=out)
-        # return out
 
     def loss(self, y_pred, y_true):
         diff = self.spectrogram(y_pred) - self.spectrogram(y_true)

@@ -12,6 +12,7 @@
 *.blg
 *.bbl
 *.bcf
+*.pt
 venv
 dataset/
 source_separation/synthesizer/timidity.cfg

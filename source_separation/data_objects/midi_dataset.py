@@ -1,7 +1,7 @@
 from source_separation.data_objects.music import Music
 from pathos.threading import ThreadPool
+from sklearn.utils import shuffle
 from pathlib import Path
-from random import shuffle
 from typing import List
 from time import perf_counter as timer
 import numpy as np
@@ -21,6 +21,11 @@ class MidiDataset:
         will be used. 
         """
         self.hparams = hparams
+        self.epochs = 0
+        self.epoch_progress = 0.
+        self.musics_sampled = 0
+        self.chunks_generated = 0
+
         
         # Build the index: a list of tuples (fpath, instruments) 
         index_fname = "midi_%s_index.txt" % ("train" if is_train else "test")
@@ -31,7 +36,8 @@ class MidiDataset:
                       list(map(int, instruments.split(',')))) for fpath, instruments in index]
 
     def generate(self, source_instruments: List[int], target_instruments: List[int],
-                 batch_size: int, n_threads, music_buffer_size, quickstart=False):
+                 batch_size: int, n_threads=4, chunk_reuse_factor=1, chunk_pool_size=1000, 
+                 quickstart=False):
         # Todo: redo the doc
         # """
         # :param chunk_duration: the duration, in seconds, of the audio segments that the dataset 
@@ -48,79 +54,121 @@ class MidiDataset:
         # Todo: later, think about how the instruments should be selected
         assert all((i in source_instruments) for i in target_instruments), \
             "Some target instruments are not in the set of the source instruments."
+        assert chunk_pool_size >= batch_size, \
+            "The chunk pool size should be greater or equal to the batch size."
+        
+        # Reset all generation statistics
+        self.epochs = 0
+        self.epoch_progress = 0.
+        self.musics_sampled = 0
+        self.chunks_generated = 0
         
         # Create a generator that loops infinitely over the songs in a random order
         def midi_fpath_generator():
             midi_fpaths = list(self._get_files_by_instruments(source_instruments))
             while True:
                 shuffle(midi_fpaths)
-                yield from midi_fpaths
+                for i, midi_fpath in enumerate(midi_fpaths, 1):
+                    yield midi_fpath
+                    self.epoch_progress = i / len(midi_fpaths) 
+                self.epochs += 1
         midi_fpath_generator = midi_fpath_generator()
-                
+        
         # Define a function to fill a buffer
         def begin_next_buffer():
+            # Estimate how many musics to sample from to generate a full batch
+            avg_n_chunks = self.chunks_generated / self.musics_sampled if self.musics_sampled else 0
+            n_musics = int(np.ceil(batch_size / avg_n_chunks) if avg_n_chunks else 0) + n_threads
+            self.musics_sampled += n_musics
+            
+            # Begin filling the buffer with threads from the threadpool 
             func = lambda fpath: self._extract_chunks(fpath, source_instruments, target_instruments)
-            midi_fpaths = [next(midi_fpath_generator) for _ in range(music_buffer_size)]
-            return pool.uimap(func, midi_fpaths)
+            midi_fpaths = [next(midi_fpath_generator) for _ in range(n_musics)]
+            return thread_pool.uimap(func, midi_fpaths)
         
-        # Create the threadpool and initialize the buffers
-        pool = ThreadPool(n_threads)
-        buffer = []
-        next_buffer = begin_next_buffer()
+        # Define a function the fill the chunk pool
+        def refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer):
+            # Do nothing if the pool is already full
+            if len(chunk_pool) >= chunk_pool_size:
+                return chunk_pool, chunk_pool_uses, buffer
+            
+            while len(chunk_pool) < chunk_pool_size:
+                # Retrieve the elements from the next buffer that were generated in the
+                # background. If it is not done generating, block until so with a call to list().
+                print("Refilling the chunk pool... ", end=" ")
+                start = timer()
+                buffer = list(buffer)
+                
+                # Flatten the buffer to retrieve a list of chunks, and append all the contents of 
+                # the buffer to the chunk pool
+                n_musics = len(buffer)
+                buffer = [chunk for chunks in buffer for chunk in chunks if chunk.shape != (0,)]
+                chunk_pool.extend(buffer)
+                chunk_pool_uses.extend([chunk_reuse_factor] * len(buffer))
+                delta = timer() - start   
+                print("Done!\nBlocked %dms to generate %d chunks from %d musics. The pool is now "
+                      "%.0f%% full." % (int(delta * 1000), len(buffer), n_musics,
+                                        100 * len(chunk_pool) / chunk_pool_size))
+                
+                # Register statistics about the number of generated chunks to better estimate how
+                # many jobs will be needed to fill the pool the next time
+                self.chunks_generated += len(buffer)
+    
+                # Begin a new buffer in the background
+                buffer = begin_next_buffer()
+                
+            # Shuffle the chunk pool so as to mix different musics in a same batch
+            chunk_pool, chunk_pool_uses = shuffle(chunk_pool, chunk_pool_uses)
+            return chunk_pool, chunk_pool_uses, buffer
         
-        # If quickstart is enabled, load a precomputed buffer from disk or build one if it 
+        # Create the threadpool, the chunk pool and initialize the buffers
+        thread_pool = ThreadPool(n_threads)
+        chunk_pool = []
+        chunk_pool_uses = []
+        buffer = begin_next_buffer()
+        
+        # If quickstart is enabled, load a precomputed pool from disk or build one if it 
         # doesn't exist yet.
         if quickstart:
             quickstart_id = "_%s_%s" % ("-".join(map(str, source_instruments)),
                                         "-".join(map(str, target_instruments)))
-            buffer_fpath = Path("quickstart%s.npy" % quickstart_id)
-            if not buffer_fpath.exists():
-                print("Creating an initial buffer for quickstarting the next runs...", end=" ")
-                buffer = []
-                while len(buffer) < batch_size:
-                    buffer.extend([chunk for chunks in begin_next_buffer() for chunk in chunks])
-                np.save(buffer_fpath, np.array(buffer[:batch_size]))
-                print("Done!")
+            chunk_pool_fpath = Path("quickstart%s.npy" % quickstart_id)
+            if not chunk_pool_fpath.exists():
+                chunk_pool, chunk_pool_uses, buffer = \
+                    refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer)
+                np.save(chunk_pool_fpath, chunk_pool[:chunk_pool_size])
+                print("Saved the quickstart pool to the disk!")
             else:
-                print("Loading from quickstart buffer.")
-                buffer = list(np.load(buffer_fpath))
+                print("Loading from the quickstart chunk pool.")
+                chunk_pool = list(np.load(chunk_pool_fpath))
+                chunk_pool_uses = [chunk_reuse_factor] * chunk_pool_size
         
         # We wrap the generator inside an explicit generator function. We could simply make this 
         # function (MidiDataset.generate()) the generator itself, but splitting the initialization
         # code and the actual generator allows us to execute the initialization when 
         # MidiDataset.generate() is called for the first time, rather than when we start iterating
         # from the dataset.
-        def generator(buffer, next_buffer):
+        def generator(chunk_pool, chunk_pool_uses, buffer):
             while True:
-                while len(buffer) < batch_size:
-                    # Retrieve the elements from the next buffer that were generated in the
-                    # bckground. If it is not done generating, block until so with a call to list().
-                    print("Generating a new buffer from %d musics... " % music_buffer_size, end=" ")
-                    start = timer()
-                    next_buffer = list(next_buffer)
-                    delta = timer() - start
-                    print("Done! Blocked %dms to generate the buffer." % (int(delta * 1000)))
-                    
-                    # Flatten the buffer to retrieve a list of chunks
-                    next_buffer = [chunk for chunks in next_buffer for chunk in chunks]
-                    print("Generated %d new chunks." % len(next_buffer))
-                    
-                    # Shuffle the buffer so as to mix different musics in a same batch
-                    shuffle(next_buffer)
-                    
-                    # Append all the contents of the new buffer to the current buffer, so that it
-                    # now has more elements to generate new batches
-                    buffer.extend(next_buffer)
-                    
-                    # Begin a new buffer in the background
-                    next_buffer = begin_next_buffer()
-                
-                # Consume elements from the buffer to generate a batch
-                batch = buffer[:batch_size]
+                # Make sure the chunk pool is full
+                chunk_pool, chunk_pool_uses, buffer = \
+                    refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer)
+            
+                # Consume elements from the chunk pool to generate a batch
+                batch = chunk_pool[:batch_size]
+                batch_uses = chunk_pool_uses[:batch_size]
+                del chunk_pool[:batch_size]
+                del chunk_pool_uses[:batch_size]
+                for chunk, chunk_uses in zip(batch, batch_uses):
+                    if chunk_uses - 1 == 0:
+                        continue
+                    chunk_pool.append(chunk)
+                    chunk_pool_uses.append(chunk_uses - 1)
+
+                # Yield the chunks as a batch
                 yield np.array(batch).transpose((1, 0, 2))
-                del buffer[:batch_size]
                 
-        return generator(buffer, next_buffer)
+        return generator(chunk_pool, chunk_pool_uses, buffer)
 
     def _get_files_by_instruments(self, instruments, mode="and"):
         """
@@ -189,6 +237,6 @@ class MidiDataset:
                 continue
                 
             # Accept samples that were not discarded
-            chunks.append((source_chunk, target_chunk))
+            chunks.append(np.array([source_chunk, target_chunk]))
             
         return chunks
