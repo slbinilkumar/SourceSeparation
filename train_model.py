@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument("--sample_rate", default=44100, type=int)
     parser.add_argument("--train_steps", default=20000, type=int)
     parser.add_argument("--validate_steps", default=1000, type=int)
+    parser.add_argument("--learning_rate_init", default=0.01, type=float)
     
     # Format the arguments
     args = parser.parse_args()
@@ -36,6 +37,9 @@ if __name__ == '__main__':
     get_instruments_id = lambda l: list(map(get_instrument_id, l.split(",")))
     args.source_instruments = get_instruments_id(args.source_instruments)
     args.target_instruments = get_instruments_id(args.target_instruments)
+
+    # Update the hparams with CLI arguments
+    hparams.update(**vars(args))
     
     # Being the training
     train(args, hparams)

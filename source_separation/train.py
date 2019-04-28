@@ -21,7 +21,7 @@ def train(args, hparams):
                                 # batches
         chunk_pool_size=1000,   # High: less redundancy in the batches, but higher RAM usage
                                 # Additional RAM ~= chunk_pool_size * 1.7kb
-        quickstart=True,        # For quick debugging (caches first pool to disk)
+        quickstart=False,       # For quick debugging (caches first pool to disk)
     )
 
     # # If you want to have a look at the data
@@ -34,8 +34,7 @@ def train(args, hparams):
 
     # Create the model and the optimizer
     model = Model(hparams).cuda()
-    learning_rate_init = 0.01
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate_init)
+    optimizer = torch.optim.Adam(model.parameters(), lr=hparams.learning_rate_init)
     init_step = 1
     save_every = 100
 
@@ -47,7 +46,7 @@ def train(args, hparams):
         init_step = checkpoint["step"]
         model.load_state_dict(checkpoint["model_state"])
         optimizer.load_state_dict(checkpoint["optimizer_state"])
-        optimizer.param_groups[0]["lr"] = learning_rate_init
+        optimizer.param_groups[0]["lr"] = hparams.learning_rate_init
     else:
         print("No model \"%s\" found, starting training from scratch." % state_fpath)
         
