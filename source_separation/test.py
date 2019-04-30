@@ -53,11 +53,11 @@ def test(args, hparams):
             # Process the waveforms for playing
             x = x.squeeze().cpu().numpy()
             y_pred = y_pred.cpu().numpy()
-            y_pred = (y_pred / y_pred.max()) * x.max()
+            y_pred = (y_pred / np.abs(y_pred).max()) * np.abs(x).max()
             
             # Listen to the audio waveforms
-            print("Playing the source audio:")
+            print("Playing the source audio.")
             sd.play(x, samplerate=args.sample_rate, blocking=True)
-            print("Playing the generated audio:")
+            print("Playing the generated audio.")
             sd.play(y_pred, samplerate=args.sample_rate, blocking=True)
         

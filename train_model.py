@@ -13,6 +13,8 @@ if __name__ == '__main__':
     # Parse the arguments from cli
     parser = argparse.ArgumentParser(description="Trains the source separation model.",
                                      formatter_class=MyFormatter)
+    parser.add_argument("run_name",
+                        help="Name to give to this run in visdom and to save the model as.")
     parser.add_argument("dataset_root",
                         help="Path to a directory containing the 'pop_midi_dataset_ismir' dataset "
                              "and the index files")

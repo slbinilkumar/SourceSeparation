@@ -1,3 +1,13 @@
 - Spectrogram loss, rather than spectrogram modeling
 - Chunk pool for data efficiency
 - GRU for short-term dependencies
+- Best train loss:
+    - conv1 1x10x2205, conv2 10x1x1: 
+        - 40 at 180 steps
+        - 35 at 250 steps 
+    - conv1 1x10x2205, relu, conv2 10x1x1: 
+        - 40 at 150 steps
+        - 35 at 400 steps 
+        - 30 at 1200 steps
+    - conv1 1x10x551, relu, gru1 10x3x1, relu, conv2 3x1x1: 
+        - 41 at 230 steps

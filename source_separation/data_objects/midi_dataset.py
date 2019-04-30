@@ -67,7 +67,6 @@ class MidiDataset:
         def midi_fpath_generator():
             midi_fpaths = list(self._get_files_by_instruments(source_instruments))
             while True:
-                shuffle(midi_fpaths)
                 for i, midi_fpath in enumerate(midi_fpaths, 1):
                     yield midi_fpath
                     self.epoch_progress = i / len(midi_fpaths) 
