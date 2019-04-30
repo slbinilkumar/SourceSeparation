@@ -36,6 +36,10 @@ def _define_hparams():
     
     # If more than this proportion of the target sample is silence, the sample is discarded.
     chunk_silence_prop_max = 0.4
+
+    ## Models parameters
+    # Initial learning rate
+    learning_rate_init = 0.01
     
     
     return HParams(**locals())
