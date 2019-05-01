@@ -1,15 +1,32 @@
 from torch import nn
 import torch.nn.functional as f
-import numpy as np
 import torch
 
-class Model(nn.Module):
+
+def spectrogram(wav, hparams):
+    stft = torch.stft(
+        wav,
+        n_fft=hparams.n_fft,
+        hop_length=hparams.hop_size,
+        win_length=hparams.win_size,
+        window=torch.hann_window(hparams.win_size).cuda()
+    )
+    power = (stft ** 2).sum(dim=-1)
+    log_spec = 10. * torch.log10(torch.clamp(power / power.max(), 1e-10))
+    return torch.max(log_spec, log_spec.max() - hparams.top_db)
+
+def spectrogram_loss(y_pred, y_true, hparams):
+    diff = spectrogram(y_pred, hparams) - spectrogram(y_true, hparams)
+    l2_loss = torch.mean(diff ** 2)
+    return l2_loss
+
+
+class SimpleConvolutionalModel(nn.Module):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
         
         # Network defition
-        # self.pad = nn.ConstantPad1d(self.hparams.sample_rate // 160, 0)
         self.conv1 = nn.Conv1d(in_channels=1,
                                out_channels=15,
                                padding=self.hparams.sample_rate // 160,
@@ -29,36 +46,16 @@ class Model(nn.Module):
     
     def forward(self, x: torch.Tensor):
         x = x.unsqueeze(1)
-        # Shape: (batch, channels, seq_length)
 
+        # Shape: (batch, channels, seq_length)
         x = self.conv1(x)
         x = torch.nn.functional.relu(x)
-        
         x = self.conv2(x)
         x = torch.nn.functional.relu(x)
-        
         x = self.conv3(x)
         x = torch.nn.functional.relu(x)
-        
         x = self.conv4(x)
         
-        x = x.squeeze()
+        x = x.squeeze(1)
         return x
 
-    def spectrogram(self, wav):
-        stft = torch.stft(
-            wav, 
-            n_fft=self.hparams.n_fft,
-            hop_length=self.hparams.hop_size,
-            win_length=self.hparams.win_size,
-            window=torch.hann_window(self.hparams.win_size).cuda()
-        )
-        power = (stft ** 2).sum(dim=-1)
-        log_spec = 10. * torch.log10(torch.clamp(power / power.max(), 1e-10))
-        return torch.max(log_spec, log_spec.max() - self.hparams.top_db)
-
-    def loss(self, y_pred, y_true):
-        diff = self.spectrogram(y_pred) - self.spectrogram(y_true)
-        # diff = y_pred - y_true
-        l2_loss = torch.mean(diff ** 2)
-        return l2_loss

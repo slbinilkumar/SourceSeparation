@@ -1,6 +1,6 @@
 from source_separation.visualizations import Visualizations
 from source_separation.data_objects import MidiDataset
-from source_separation.model import Model
+from source_separation.model import SimpleConvolutionalModel, spectrogram_loss
 from pathlib import Path
 import numpy as np
 import torch
@@ -27,7 +27,7 @@ def train(args, hparams):
     )
 
     # Create the model and the optimizer
-    model = Model(hparams).cuda()
+    model = SimpleConvolutionalModel(hparams).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=hparams.learning_rate_init)
     init_step = 1
 
@@ -58,7 +58,7 @@ def train(args, hparams):
         # Forward pass
         x, y_true = torch.from_numpy(batch).cuda()
         y_pred = model(x)
-        loss = model.loss(y_pred, y_true)
+        loss = spectrogram_loss(y_pred, y_true, hparams)
         loss_buffer.append(loss.item())
         if len(loss_buffer) > 25:
             del loss_buffer[0]

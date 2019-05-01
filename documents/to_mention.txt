@@ -1,4 +1,7 @@
+- Properties of waveform
+    - Sum
 - Spectrogram loss, rather than spectrogram modeling
+    - Idependant to norm
 - Chunk pool for data efficiency
 - GRU for short-term dependencies
 - Best train loss:

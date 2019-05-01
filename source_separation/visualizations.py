@@ -81,28 +81,6 @@ class Visualizations:
             )
         )
         
-        # now = clock()
-        # if self.last_step != -1 and self.implementation_win is not None:
-        #     time_per_step = (now - self.last_update_timestamp) / (step - self.last_step)
-        #     if self.mean_time_per_step == -1:
-        #         self.mean_time_per_step = time_per_step
-        #     else:
-        #         self.mean_time_per_step = self.mean_time_per_step * 0.9 + time_per_step * 0.1
-        #     time_string = "<b>Mean time per step</b>: %dms" % int(1000 * self.mean_time_per_step)
-        #     time_string += "<br><b>Last step time</b>: %dms" % int(1000 * time_per_step)
-        #     self.vis.text(
-        #         self.implementation_string + time_string, 
-        #         win=self.implementation_win,
-        #         opts={"title": "Training implementation"},
-        #     )
-        #     print("Step %6d   Loss: %.4f   EER: %.4f   LR: %g   Mean step time: %5dms   "
-        #           "Last step time: %5dms" %
-        #           (step, self.loss_buffer, self.eer_exp, lr, int(1000 * self.mean_time_per_step),
-        #            int(1000 * time_per_step)))
-        #     
-        # self.last_step = step
-        # self.last_update_timestamp = now
-        
     # def draw_projections(self, embeds, utterances_per_speaker, step, out_fpath=None,
     #                      max_speakers=10):
     #     max_speakers = min(max_speakers, len(colormap))
