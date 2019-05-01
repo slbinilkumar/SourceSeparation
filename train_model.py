@@ -20,17 +20,29 @@ if __name__ == '__main__':
                              "and the index files")
     parser.add_argument("source_instruments",
                         help="Comma-separated list of the names of instruments for the input"
-                             "samples.  For a complete list of available instruments: python -m "
+                             "samples. For a complete list of available instruments: python -m "
                              "source_separation.data_objects.midi_instruments")
     parser.add_argument("target_instruments",
                         help="Identical to source_instruments but for the target instruments to"
                              "predict. All target instruments must appear as source intruments.")
-    
+    parser.add_argument("-s", "--save_every", default=100, type=int,
+                        help="Number of steps between updates of the model on the disk. Set to 0"
+                             "to disable saving the model.")
+    parser.add_argument("-r", "--chunk_reuse", default=2, type=int,
+                        help="Number of times a chunk is reused in training. Higher: more data-"
+                             "efficient but also more redundancy. Increase this value if ")
+    parser.add_argument("-p", "--chunk_pool_size", default=1000, type=int,
+                        help="Size of the chunk pool. Higher means more domain variance in the "
+                             "input batches, but higher RAM usage (and disk if quickstart is set)."
+                             "Warning: the pool size is not a strict upper bound. The pool can be "
+                             "filled to more than 100% of its size. With all default parameters, "
+                             "a full pool takes 1.7gb of space.")
+    parser.add_argument("-q", "--quickstart", action="store_true",
+                        help="If set, the first chunk pool will be cached to disk and reused at"
+                             "the beggining of subsequent trainings. If not, the pool must be "
+                             "refilled before each training.")
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--chunk_duration", default=5, type=int)
-    parser.add_argument("--sample_rate", default=44100, type=int)
-    parser.add_argument("--train_steps", default=20000, type=int)
-    parser.add_argument("--validate_steps", default=1000, type=int)
     parser.add_argument("--learning_rate_init", default=0.01, type=float)
     
     # Format the arguments

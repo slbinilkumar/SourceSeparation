@@ -36,7 +36,7 @@ class MidiDataset:
                       list(map(int, instruments.split(',')))) for fpath, instruments in index]
 
     def generate(self, source_instruments: List[int], target_instruments: List[int],
-                 batch_size: int, n_threads=4, chunk_reuse_factor=1, chunk_pool_size=1000, 
+                 batch_size: int, n_threads=4, chunk_reuse=1, chunk_pool_size=1000,
                  quickstart=False):
         # Todo: redo the doc
         # """
@@ -103,7 +103,7 @@ class MidiDataset:
                 n_musics = len(buffer)
                 buffer = [chunk for chunks in buffer for chunk in chunks if chunk.shape != (0,)]
                 chunk_pool.extend(buffer)
-                chunk_pool_uses.extend([chunk_reuse_factor] * len(buffer))
+                chunk_pool_uses.extend([chunk_reuse] * len(buffer))
                 delta = timer() - start   
                 print("Done!\nBlocked %dms to generate %d chunks from %d musics. The pool is now "
                       "%.0f%% full." % (int(delta * 1000), len(buffer), n_musics,
@@ -140,7 +140,7 @@ class MidiDataset:
             else:
                 print("Loading from the quickstart chunk pool.")
                 chunk_pool = list(np.load(chunk_pool_fpath))
-                chunk_pool_uses = [chunk_reuse_factor] * chunk_pool_size
+                chunk_pool_uses = [chunk_reuse] * chunk_pool_size
         
         # We wrap the generator inside an explicit generator function. We could simply make this 
         # function (MidiDataset.generate()) the generator itself, but splitting the initialization

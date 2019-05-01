@@ -7,29 +7,29 @@ import torch
 
 
 def train(args, hparams):
+    # Initialize visdom
+    vis = Visualizations(args.run_name, averaging_window=25, auto_open_browser=True)
+    
+    # Create the dataset
     dataset = MidiDataset(
         root=args.dataset_root,
         is_train=True,
         hparams=hparams,
     )
-    
-    dataloader = dataset.generate(
+    data_iterator = dataset.generate(
         source_instruments=args.source_instruments,
         target_instruments=args.target_instruments,
         batch_size=args.batch_size,
         n_threads=4,
-        chunk_reuse_factor=2,   # Higher: more efficient data usage but more redundancy in the 
-                                # batches
-        chunk_pool_size=1000,   # High: less redundancy in the batches, but higher RAM usage
-                                # Additional RAM ~= chunk_pool_size * 1.7kb
-        quickstart=False,       # For quick debugging (caches first pool to disk)
+        chunk_reuse=args.chunk_reuse,
+        chunk_pool_size=args.chunk_pool_size,
+        quickstart=args.quickstart,
     )
 
     # Create the model and the optimizer
     model = Model(hparams).cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=hparams.learning_rate_init)
     init_step = 1
-    save_every = 100
 
     # Load any existing model
     state_fpath = Path("%s.pt" % args.run_name)
@@ -47,7 +47,6 @@ def train(args, hparams):
     model.train()
     
     # Setup the visualizations environment
-    vis = Visualizations(args.run_name, averaging_window=25, auto_open_browser=True)
     device_name = str(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
     vis.log_params(args.__dict__, "Arguments")
     vis.log_params(hparams.__dict__, "Hyperparameters")
@@ -55,7 +54,7 @@ def train(args, hparams):
 
     # Training loop
     loss_buffer = []
-    for step, batch in enumerate(dataloader, init_step):
+    for step, batch in enumerate(data_iterator, init_step):
         # Forward pass
         x, y_true = torch.from_numpy(batch).cuda()
         y_pred = model(x)
@@ -63,7 +62,7 @@ def train(args, hparams):
         loss_buffer.append(loss.item())
         if len(loss_buffer) > 25:
             del loss_buffer[0]
-        vis.update(loss.item(), learning_rate_init, step)
+        vis.update(loss.item(), hparams.learning_rate_init, step)
         print("Step %d   Avg. Loss %.4f   Loss %.4f" % 
               (step, np.mean(loss_buffer), loss.item()))
     
@@ -73,7 +72,8 @@ def train(args, hparams):
         optimizer.step()
     
         # Overwrite the latest version of the model
-        if save_every != 0 and step % save_every == 0:
+        if args.save_every != 0 and step % args.save_every == 0:
+            vis.save()
             print("Saving the model (step %d)" % step)
             torch.save({
                 "step": step + 1,

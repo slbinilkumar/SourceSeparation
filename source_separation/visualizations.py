@@ -122,6 +122,6 @@ class Visualizations:
     #         plt.savefig(out_fpath)
     #     plt.clf()
         
-    # def save(self):
-    #     self.vis.save([self.env_name])
+    def save(self):
+        self.vis.save([self.env_name])
         

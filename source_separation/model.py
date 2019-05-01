@@ -1,7 +1,7 @@
 from torch import nn
+import torch.nn.functional as f
 import numpy as np
 import torch
-
 
 class Model(nn.Module):
     def __init__(self, hparams):
@@ -9,44 +9,40 @@ class Model(nn.Module):
         self.hparams = hparams
         
         # Network defition
-        self.pad = nn.ConstantPad1d(self.hparams.sample_rate // 40, 0)
+        # self.pad = nn.ConstantPad1d(self.hparams.sample_rate // 160, 0)
         self.conv1 = nn.Conv1d(in_channels=1,
-                               out_channels=10,
-                               kernel_size=self.hparams.sample_rate // 20)
-        self.conv2 = nn.Conv1d(in_channels=10,
+                               out_channels=15,
+                               padding=self.hparams.sample_rate // 160,
+                               kernel_size=self.hparams.sample_rate // 80)
+        self.conv2 = nn.Conv1d(in_channels=15,
+                               out_channels=15,
+                               padding=70,
+                               kernel_size=141)
+        self.conv3 = nn.Conv1d(in_channels=15,
+                               out_channels=15,
+                               padding=18,
+                               kernel_size=37)
+        self.conv4 = nn.Conv1d(in_channels=15,
                                out_channels=1,
-                               kernel_size=1)                      
-        
-        
-        # self.lstm = nn.LSTM(input_size=mel_n_channels,
-        #                     hidden_size=model_hidden_size,
-        #                     num_layers=model_num_layers,
-        #                     batch_first=True).to(device)
-        # self.relu = torch.nn.ReLU().to(device)
-        
+                               padding=5,
+                               kernel_size=11)                      
     
     def forward(self, x: torch.Tensor):
-        # Obtain a tensor of shape (batch, channels, seq_length)
         x = x.unsqueeze(1)
-        
-        x = self.pad(x)
+        # Shape: (batch, channels, seq_length)
+
         x = self.conv1(x)
-        x = self.conv2(x)
+        x = torch.nn.functional.relu(x)
         
-        # Obtain a tensor of shape (batch, seq_length)
+        x = self.conv2(x)
+        x = torch.nn.functional.relu(x)
+        
+        x = self.conv3(x)
+        x = torch.nn.functional.relu(x)
+        
+        x = self.conv4(x)
+        
         x = x.squeeze()
-
-
-        # # Pass the input through the LSTM layers and retrieve all outputs, the final hidden state
-        # # and the final cell state.
-        # out, (hidden, cell) = self.lstm(utterances, hidden_init)
-        # 
-        # # We take only the hidden state of the last layer
-        # embeds_raw = self.relu(self.linear(hidden[-1]))
-        # 
-        # # L2-normalize it
-        # embeds = embeds_raw / torch.norm(embeds_raw, dim=1, keepdim=True)
-        # 
         return x
 
     def spectrogram(self, wav):
