@@ -134,3 +134,7 @@ class WavenetBasedModel(nn.Module):
         
         x = x.squeeze(1)
         return x
+    
+
+# Set the default model    
+Model = SimpleConvolutionalModel

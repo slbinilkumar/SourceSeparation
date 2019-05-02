@@ -9,7 +9,6 @@ if __name__ == '__main__':
     class MyFormatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
         pass
     
-    
     # Parse the arguments from cli
     parser = argparse.ArgumentParser(description="Tests the source separation model.",
                                      formatter_class=MyFormatter)
@@ -23,8 +22,8 @@ if __name__ == '__main__':
     parser.add_argument("target_instruments",
                         help="Identical to source_instruments but for the target instruments to"
                              "predict. All target instruments must appear as source intruments.")
-    
-    parser.add_argument("--chunk_duration", default=8, type=int)
+    parser.add_argument("-d", "--chunk_duration", default=5, type=int,
+                        help="Duration of the chunks, in seconds")
     parser.add_argument("--sample_rate", default=44100, type=int)
     
     # Format the arguments
@@ -34,5 +33,4 @@ if __name__ == '__main__':
     args.source_instruments = get_instruments_id(args.source_instruments)
     args.target_instruments = get_instruments_id(args.target_instruments)
     
-    # Being the training
     test(args, hparams)

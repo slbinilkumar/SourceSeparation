@@ -1,0 +1,10 @@
+visdom
+numpy
+scipy
+pathos
+tqdm
+matplotlib
+sounddevice
+mido
+torch
+scikit_learn

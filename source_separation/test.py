@@ -33,7 +33,6 @@ def test(args, hparams):
     # Set the model to eval mode
     model.eval()
     
-    # If you want to have a look at the data
     for batch in dataloader:
         with torch.no_grad():
             x, y_true = torch.from_numpy(batch).cuda()

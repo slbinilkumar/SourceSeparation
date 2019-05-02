@@ -41,9 +41,10 @@ if __name__ == '__main__':
                         help="If set, the first chunk pool will be cached to disk and reused at"
                              "the beggining of subsequent trainings. If not, the pool must be "
                              "refilled before each training.")
-    parser.add_argument("--batch_size", default=32, type=int)
-    parser.add_argument("--chunk_duration", default=5, type=int)
-    parser.add_argument("--learning_rate_init", default=0.01, type=float)
+    parser.add_argument("-d", "--chunk_duration", default=5, type=int,
+                        help="Duration of the chunks, in seconds")
+    parser.add_argument("-b", "--batch_size", default=32, type=int)
+    parser.add_argument("-l", "--learning_rate_init", default=0.01, type=float)
     
     # Format the arguments
     args = parser.parse_args()
@@ -55,5 +56,5 @@ if __name__ == '__main__':
     # Update the hparams with CLI arguments
     hparams.update(**vars(args))
     
-    # Being the training
+    # Begin the training
     train(args, hparams)
