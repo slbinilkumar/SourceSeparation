@@ -1,14 +1,16 @@
 from source_separation.data_objects.music import Music
+from source_separation.hparams import HParams
 from pathos.threading import ThreadPool
 from sklearn.utils import shuffle
 from pathlib import Path
 from typing import List
 from time import perf_counter as timer
 import numpy as np
+import torch
 
 
 class MidiDataset:
-    def __init__(self, root: Path, is_train: bool, hparams):
+    def __init__(self, root: Path, is_train: bool, hparams: HParams):
         """
         Creates a dataset that synthesizes instrument tracks from midi files. Call 
         MidiDataset.generate() to iterate over the dataset and retrieve pairs of fixed-size 
@@ -26,7 +28,6 @@ class MidiDataset:
         self.musics_sampled = 0
         self.chunks_generated = 0
 
-        
         # Build the index: a list of tuples (fpath, instruments) 
         index_fname = "midi_%s_index.txt" % ("train" if is_train else "test")
         index_fpath = root.joinpath(index_fname)
@@ -35,9 +36,8 @@ class MidiDataset:
         self.index = [(root.joinpath(fpath.replace('"', '')),
                       list(map(int, instruments.split(',')))) for fpath, instruments in index]
 
-    def generate(self, source_instruments: List[int], target_instruments: List[int],
-                 batch_size: int, n_threads=4, chunk_reuse=1, chunk_pool_size=1000,
-                 quickstart=False):
+    def generate(self, instruments: List[int], batch_size: int, n_threads=4, chunk_reuse=1, 
+                 chunk_pool_size=1000):
         # Todo: redo the doc
         # """
         # :param chunk_duration: the duration, in seconds, of the audio segments that the dataset 
@@ -52,8 +52,6 @@ class MidiDataset:
         # :param n_threads: number of threads used for synthesizing the midi files.
         # """
         # Todo: later, think about how the instruments should be selected
-        assert all((i in source_instruments) for i in target_instruments), \
-            "Some target instruments are not in the set of the source instruments."
         assert chunk_pool_size >= batch_size, \
             "The chunk pool size should be greater or equal to the batch size."
         
@@ -65,7 +63,7 @@ class MidiDataset:
         
         # Create a generator that loops infinitely over the songs in a random order
         def midi_fpath_generator():
-            midi_fpaths = list(self._get_files_by_instruments(source_instruments))
+            midi_fpaths = list(self._get_files_by_instruments(instruments, at_least=2))
             while True:
                 for i, midi_fpath in enumerate(midi_fpaths, 1):
                     yield midi_fpath
@@ -81,7 +79,7 @@ class MidiDataset:
             self.musics_sampled += n_musics
             
             # Begin filling the buffer with threads from the threadpool 
-            func = lambda fpath: self._extract_chunks(fpath, source_instruments, target_instruments)
+            func = lambda fpath: self._extract_chunks(fpath, instruments)
             midi_fpaths = [next(midi_fpath_generator) for _ in range(n_musics)]
             return thread_pool.uimap(func, midi_fpaths)
         
@@ -101,7 +99,7 @@ class MidiDataset:
                 # Flatten the buffer to retrieve a list of chunks, and append all the contents of 
                 # the buffer to the chunk pool
                 n_musics = len(buffer)
-                buffer = [chunk for chunks in buffer for chunk in chunks if chunk.shape != (0,)]
+                buffer = [chunk for chunks in buffer for chunk in chunks]
                 chunk_pool.extend(buffer)
                 chunk_pool_uses.extend([chunk_reuse] * len(buffer))
                 delta = timer() - start   
@@ -126,22 +124,6 @@ class MidiDataset:
         chunk_pool_uses = []
         buffer = begin_next_buffer()
         
-        # If quickstart is enabled, load a precomputed pool from disk or build one if it 
-        # doesn't exist yet.
-        if quickstart:
-            quickstart_id = "_%s_%s" % ("-".join(map(str, source_instruments)),
-                                        "-".join(map(str, target_instruments)))
-            chunk_pool_fpath = Path("quickstart%s.npy" % quickstart_id)
-            if not chunk_pool_fpath.exists():
-                chunk_pool, chunk_pool_uses, buffer = \
-                    refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer)
-                np.save(chunk_pool_fpath, chunk_pool[:chunk_pool_size])
-                print("Saved the quickstart pool to the disk!")
-            else:
-                print("Loading from the quickstart chunk pool.")
-                chunk_pool = list(np.load(chunk_pool_fpath))
-                chunk_pool_uses = [chunk_reuse] * chunk_pool_size
-        
         # We wrap the generator inside an explicit generator function. We could simply make this 
         # function (MidiDataset.generate()) the generator itself, but splitting the initialization
         # code and the actual generator allows us to execute the initialization when 
@@ -154,49 +136,51 @@ class MidiDataset:
                     refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer)
             
                 # Consume elements from the chunk pool to generate a batch
-                batch = chunk_pool[:batch_size]
-                batch_uses = chunk_pool_uses[:batch_size]
+                chunks = chunk_pool[:batch_size]
+                chunks_uses = chunk_pool_uses[:batch_size]
                 del chunk_pool[:batch_size]
                 del chunk_pool_uses[:batch_size]
-                for chunk, chunk_uses in zip(batch, batch_uses):
-                    if chunk_uses - 1 == 0:
+                for chunk, chunk_uses in zip(chunks, chunks_uses):
+                    if chunk_uses == 1:
                         continue
                     chunk_pool.append(chunk)
                     chunk_pool_uses.append(chunk_uses - 1)
 
                 # Yield the chunks as a batch
-                yield np.array(batch).transpose((1, 0, 2))
+                yield self._collate(chunks, instruments)
                 
+        # TODO: prefetch
+        
         return generator(chunk_pool, chunk_pool_uses, buffer)
+    
+    def _collate(self, chunks, instruments):
+        """
+        Collates chunks into a batch.
+        """
+        # Expand the target to also contain instruments that do not appear in the music
+        x = np.array([chunk[0] for chunk in chunks])
+        y = np.zeros((x.shape[0], len(instruments), x.shape[1]))
+        for i in range(len(chunks)):
+            for instrument_chunk, instrument in zip(chunks[i][1], chunks[i][2]):
+                index = instruments.index(instrument)
+                y[i, index] = instrument_chunk
+        
+        return torch.from_numpy(x), torch.from_numpy(y)
 
-    def _get_files_by_instruments(self, instruments, mode="and"):
+    def _get_files_by_instruments(self, instruments, at_least=2):
         """
         Yields midi filepaths in the dataset that contain a specific set of instruments.
 
         :param instruments: a list of instrument IDs.
-        :param mode: if "and", the midi file will only be returned if all the instruments 
-        required are found in the midi. If "or", it will be returned as soon as one instrument is 
-        found in the midi.  
+        :param at_least: how many instruments must at least match between the list of instruments
+        and the midi's instruments for the midi to be selected. 
         :return: a generator that yields the midi filepaths as strings
         """
         for midi_fpath, midi_instruments in self.index:
-            selector = all if mode == "and" else any
-            if selector((i in midi_instruments) for i in instruments):
+            if sum((i in midi_instruments) for i in instruments) >= at_least:
                 yield midi_fpath
-                
-    def _debug_compare_chunks(self, source_chunk, target_chunk):
-        zero_prop = lambda chunk: np.sum(np.abs(chunk) < self.hparams.silence_threshold) \
-                                  / len(chunk)
-        zero_source_prop = zero_prop(source_chunk)
-        zero_target_prop = zero_prop(target_chunk)
-        similarity_prop = zero_prop(source_chunk - target_chunk)
-        np.sum(np.abs(source_chunk - target_chunk) < self.hparams.silence_threshold) /\
-            len(target_chunk)
-        print("Proportion in the source that is silence: %.2f%%" % (zero_source_prop * 100))
-        print("Proportion in the target that is silence: %.2f%%" % (zero_target_prop * 100))
-        print("Proportion of the chunk that is equal: %.2f%%" % (similarity_prop * 100))
     
-    def _extract_chunks(self, midi_fpath, source_instruments, target_instruments):
+    def _extract_chunks(self, midi_fpath, instruments):
         # Load the midi file from disk
         music = Music(sample_rate=self.hparams.sample_rate, fpath=str(midi_fpath))
         
@@ -206,36 +190,35 @@ class MidiDataset:
 
         # Generate a waveform for the reference (source) audio and the target audio the network
         # had to produce.
-        source_wav = music.generate_waveform(source_instruments)
-        target_wav = music.generate_waveform(target_instruments)
-        assert len(source_wav) == len(target_wav)
+        instruments = [i for i in music.all_instruments if i in instruments]
+        target_wavs = [music.generate_waveform([i]) for i in instruments]
         
         # Pad waveforms to a multiple of the chunk size
         chunk_size = self.hparams.chunk_duration * self.hparams.sample_rate
-        padding = chunk_size - (len(source_wav) % chunk_size)
-        source_wav = np.pad(source_wav, (0, padding), "constant")
-        target_wav = np.pad(target_wav, (0, padding), "constant")
+        padding = chunk_size - (len(target_wavs[0]) % chunk_size)
+        target_wavs = np.array([np.pad(wav, (0, padding), "constant") for wav in target_wavs])
         
         # Iterate over the waveforms to create chunks
         chunks = []
-        for i in range(0, len(source_wav), chunk_size):
-            source_chunk, target_chunk = source_wav[i:i + chunk_size], target_wav[i:i + chunk_size]
+        for i in range(0, len(target_wavs[0]), chunk_size):
+            # Cut a chunk from the waveform, and sum these chunks to create the mixed source signal
+            target_chunks = np.array([wav[i:i + chunk_size] for wav in target_wavs])
+            source_chunk = np.sum(target_chunks, axis=0)
             
-            # Compute what proportion of the waveform is repeated without change in the target 
-            # waveform. This only applies if we're not predicting the identity.
-            if not np.array_equal(source_instruments, target_instruments):
-                abs_diff = np.abs(source_chunk - target_chunk)
-                equal_prop = np.sum(abs_diff < self.hparams.silence_threshold) / len(abs_diff)
-                if equal_prop >= self.hparams.chunk_equal_prop_max:
-                    continue
-                
-            # Compute what proportion of the target waveform is silence.
-            silence_prop = np.sum(np.abs(target_chunk) < self.hparams.silence_threshold) \
-                           / len(target_chunk)
-            if silence_prop >= self.hparams.chunk_silence_prop_max:
+            # Normalize chunks by the same constant, so that they remain within [-1, 1] and that
+            # the sum of the target chunks remains exactly equal to the source chunk.
+            max_sample = np.abs(source_chunk).max()
+            target_chunks /= max_sample
+            source_chunk /= max_sample
+            
+            # Discard chunks that don't have enough playing time in them. See hparams for a
+            # description of this process.
+            sum_prop_play = np.sum((np.abs(target_chunks) >= self.hparams.silence_threshold) /
+                            target_chunks.shape[1])
+            if sum_prop_play <= self.hparams.chunk_sum_prop_play_min:
                 continue
-                
+            
             # Accept samples that were not discarded
-            chunks.append(np.array([source_chunk, target_chunk]))
+            chunks.append((source_chunk, target_chunks, instruments))
             
         return chunks

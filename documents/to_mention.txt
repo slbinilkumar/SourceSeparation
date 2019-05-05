@@ -11,3 +11,17 @@
         
         
 - Embeddings
+- Ablation study:
+    - Chunk discard vs no chunk discard
+    - MSE vs spectrogram loss
+    - Constraint on the waveform sum
+    
+- Why source separation:
+    - Intuitively, deep learning is good for tasks that humans are good at without consciously thinking.
+    - We can generate crazy images with GANs
+    - We can generate speech that is better than human
+    - We can upscale images
+    - But we can't separate instruments in a song??? Humans can more or less do it
+    
+    
+    

@@ -22,10 +22,15 @@ def spectrogram_loss(y_pred, y_true, hparams):
     return l2_loss
 
 
+def mse_loss(y_pred, y_true):
+    return torch.mean(torch.abs(y_pred - y_true))
+
+
 class SimpleConvolutionalModel(nn.Module):
-    def __init__(self, hparams):
+    def __init__(self, n_instruments, hparams):
         super().__init__()
         self.hparams = hparams
+        self.n_instruments = n_instruments
 
         # Network definition
         self.conv1 = nn.Conv1d(in_channels=1,
@@ -126,7 +131,8 @@ class WavenetBasedModel(nn.Module):
         for res_block in self.res_blocks:
             residual, skip_out = res_block(residual)
             x += skip_out
-
+            
+        x = torch.nn.functional.relu(x)
         x = self.conv1(x)
         x = torch.nn.functional.relu(x)
         x = self.conv2(x)

@@ -1,5 +1,5 @@
 from source_separation.data_objects import MidiDataset
-from source_separation.model import Model
+from source_separation.model import Model, spectrogram_loss
 from time import perf_counter as timer
 from pathlib import Path
 import sounddevice as sd
@@ -24,7 +24,7 @@ def test(args, hparams):
 
     # Load the model
     model = Model(hparams).cuda()
-    state_fpath = Path("model.pt")
+    state_fpath = Path("%s.pt" % args.run_name)
     checkpoint = torch.load(state_fpath)
     step = checkpoint["step"]
     model.load_state_dict(checkpoint["model_state"])
@@ -46,12 +46,12 @@ def test(args, hparams):
                   (args.chunk_duration, round(delta * 1000)))
             
             # Compute the loss
-            loss = model.loss(y_pred, y_true)
+            loss = spectrogram_loss(y_pred, y_true, hparams)
             print("Loss %.4f" % loss.item())
             
             # Process the waveforms for playing
             x = x.squeeze().cpu().numpy()
-            y_pred = y_pred.cpu().numpy()
+            y_pred = y_pred.squeeze().cpu().numpy()
             y_pred = (y_pred / np.abs(y_pred).max()) * np.abs(x).max()
             
             # Listen to the audio waveforms

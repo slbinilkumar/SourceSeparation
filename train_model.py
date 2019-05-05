@@ -11,6 +11,7 @@ if __name__ == '__main__':
     
     
     # Parse the arguments from cli
+    default_instruments = ",".join(map(str, hparams.default_instruments))
     parser = argparse.ArgumentParser(description="Trains the source separation model.",
                                      formatter_class=MyFormatter)
     parser.add_argument("run_name",
@@ -18,20 +19,17 @@ if __name__ == '__main__':
     parser.add_argument("dataset_root",
                         help="Path to a directory containing the 'pop_midi_dataset_ismir' dataset "
                              "and the index files")
-    parser.add_argument("source_instruments",
-                        help="Comma-separated list of the names of instruments for the input"
-                             "samples. For a complete list of available instruments: python -m "
+    parser.add_argument("-i", "--instruments", default=default_instruments, type=str,
+                        help="Comma-separated list of instruments ids. For a complete list of "
+                             "available instruments: python -m "
                              "source_separation.data_objects.midi_instruments")
-    parser.add_argument("target_instruments",
-                        help="Identical to source_instruments but for the target instruments to"
-                             "predict. All target instruments must appear as source intruments.")
     parser.add_argument("-s", "--save_every", default=100, type=int,
                         help="Number of steps between updates of the model on the disk. Set to 0"
                              "to disable saving the model.")
     parser.add_argument("-r", "--chunk_reuse", default=2, type=int,
                         help="Number of times a chunk is reused in training. Higher: more data-"
                              "efficient but also more redundancy. Increase this value if ")
-    parser.add_argument("-p", "--chunk_pool_size", default=1000, type=int,
+    parser.add_argument("-p", "--pool_size", default=1000, type=int,
                         help="Size of the chunk pool. Higher means more domain variance in the "
                              "input batches, but higher RAM usage (and disk if quickstart is set)."
                              "Warning: the pool size is not a strict upper bound. The pool can be "
@@ -49,9 +47,7 @@ if __name__ == '__main__':
     # Format the arguments
     args = parser.parse_args()
     args.dataset_root = Path(args.dataset_root)
-    get_instruments_id = lambda l: list(map(get_instrument_id, l.split(",")))
-    args.source_instruments = get_instruments_id(args.source_instruments)
-    args.target_instruments = get_instruments_id(args.target_instruments)
+    args.instruments = list(map(int, args.instruments.split(",")))
 
     # Update the hparams with CLI arguments
     hparams.update(**vars(args))

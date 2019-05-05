@@ -19,10 +19,8 @@ if __name__ == '__main__':
     test_prop = args.test_prop
     
     # Create a test and train index
-    train_index_fpath = dataset_root.joinpath("midi_train_index.txt")
-    train_index_file = open(train_index_fpath, 'w', encoding='utf-8')
-    test_index_fpath = dataset_root.joinpath("midi_test_index.txt")
-    test_index_file = open(test_index_fpath, 'w', encoding='utf-8')
+    train_index_file = dataset_root.joinpath("midi_train_index.txt").open('w', encoding='utf-8')
+    test_index_file = dataset_root.joinpath("midi_test_index.txt").open('w', encoding='utf-8')
     
     # Parse all files in the dataset
     mid_fpaths = dataset_root.rglob("**/*.mid")
