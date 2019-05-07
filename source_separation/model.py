@@ -1,6 +1,9 @@
+from pathlib import Path
+from typing import List
 from torch import nn
-import torch.nn.functional as f
+import torch as f
 import torch
+import numpy as np
 
 
 def spectrogram(wav, hparams):
@@ -17,53 +20,124 @@ def spectrogram(wav, hparams):
 
 
 def spectrogram_loss(y_pred, y_true, hparams):
+    # Flatten the tensors to obtain an array of wavs 
+    y_pred = y_pred.reshape(-1, y_pred.shape[-1])
+    y_true = y_true.reshape(-1, y_true.shape[-1])
+    
     diff = spectrogram(y_pred, hparams) - spectrogram(y_true, hparams)
     l2_loss = torch.mean(diff ** 2)
     return l2_loss
 
 
-def mse_loss(y_pred, y_true):
+def mae_loss(y_pred, y_true):
     return torch.mean(torch.abs(y_pred - y_true))
 
 
-class SimpleConvolutionalModel(nn.Module):
+def mse_loss(y_pred, y_true):
+    return torch.mean((y_pred - y_true) ** 2)
+
+
+class CombinedLoss:
+    def __init__(self, hparams, beta_init, beta_max, beta_step):
+        self.hparams = hparams
+        self.beta = beta_init
+        self.beta_max = beta_max
+        self.beta_step = beta_step
+        
+    def __call__(self, y_pred, y_true, step):
+        # if step >= self.beta_step:
+        #     self.beta = self.beta_max
+        
+        spec = spectrogram_loss(y_pred, y_true, self.hparams)
+        mae = mae_loss(y_pred, y_true)
+        print("Step %4d   Spec loss: %.3f   Mae*Beta loss: %.3f" % 
+              (step, spec.item(), self.beta * mae.item()))
+        return spec + self.beta * mae
+        
+        
+class SourceSeparationModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+    
+    def load(self, fpath: Path, optimizer, instruments: List[int], hparams):
+        checkpoint = torch.load(fpath)
+        
+        # Check that the model was trained on the same set of instruments
+        model_instruments = checkpoint["instruments"]
+        assert np.array_equal(instruments, model_instruments), \
+            "A different set of instruments was used to train this model: %s vs %s" % \
+            (model_instruments, instruments)
+        
+        # Load the model weights
+        self.load_state_dict(checkpoint["model_state"])
+        
+        # Load the optimizer state
+        if optimizer is not None:
+            optimizer.load_state_dict(checkpoint["optimizer_state"])
+            optimizer.param_groups[0]["lr"] = hparams.learning_rate_init
+        
+        # Return the step at which the model was left off when training
+        return checkpoint["step"]
+
+    def forward(self, *input):
+        raise NotImplemented()
+    
+    # def compute_output(self, x: torch.Tensor, features: torch.Tensor, n_instruments: int):
+    #     assert features.shape[1] == n_instruments - 1
+    #     
+    #     last_pred = x - features.sum(dim=1)
+    #     features = torch.cat((features, last_pred), dim=1)
+    #     y = features.clamp(-1, 1)
+    #     
+    #     return y
+
+
+class SimpleConvolutionalModel(SourceSeparationModel):
     def __init__(self, n_instruments, hparams):
         super().__init__()
         self.hparams = hparams
         self.n_instruments = n_instruments
 
         # Network definition
+        inner_channels = 50
         self.conv1 = nn.Conv1d(in_channels=1,
-                               out_channels=15,
+                               out_channels=inner_channels,
                                padding=self.hparams.sample_rate // 160,
                                kernel_size=self.hparams.sample_rate // 80)
-        self.conv2 = nn.Conv1d(in_channels=15,
-                               out_channels=15,
+        self.conv2 = nn.Conv1d(in_channels=inner_channels,
+                               out_channels=inner_channels,
                                padding=70,
                                kernel_size=141)
-        self.conv3 = nn.Conv1d(in_channels=15,
-                               out_channels=15,
+        self.conv3 = nn.Conv1d(in_channels=inner_channels,
+                               out_channels=inner_channels,
                                padding=18,
                                kernel_size=37)
-        self.conv4 = nn.Conv1d(in_channels=15,
-                               out_channels=1,
+        self.conv4 = nn.Conv1d(in_channels=inner_channels,
+                               out_channels=n_instruments,
                                padding=5,
                                kernel_size=11)
+        self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x: torch.Tensor):
         x = x.unsqueeze(1)
 
         # Shape: (batch, channels, seq_length)
-        x = self.conv1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.conv2(x)
-        x = torch.nn.functional.relu(x)
-        x = self.conv3(x)
-        x = torch.nn.functional.relu(x)
-        x = self.conv4(x)
-
-        x = x.squeeze(1)
-        return x
+        y1 = self.conv1(x)
+        y1 = torch.relu(y1)
+        y1 = y1 + x
+        y2 = self.conv2(y1)
+        y2 = torch.relu(y2)
+        y2 = y2 + y1
+        y3 = self.conv3(y2)
+        y3 = torch.relu(y3)
+        y4 = y3 + y2
+        # y4 = torch.cat((y4, x), dim=1)
+        y4 = self.conv4(y4)
+        # y4 = y4.clamp(-1, 1)
+        
+        # Go back to the other model if nothing comes out of it
+        
+        return y4
 
 
 class ResidualBlock(nn.Module):
@@ -92,9 +166,10 @@ class ResidualBlock(nn.Module):
         return residual_out, skip_out
 
 
-class WavenetBasedModel(nn.Module):
-    def __init__(self, hparams):
+class WavenetBasedModel(SourceSeparationModel):
+    def __init__(self, n_instruments, hparams):
         super().__init__()
+        self.n_instruments = n_instruments
         self.hparams = hparams
 
         self.k = 16
@@ -118,8 +193,7 @@ class WavenetBasedModel(nn.Module):
                                padding=1,
                                kernel_size=3)
         self.conv3 = nn.Conv1d(in_channels=self.k,
-                               out_channels=1,
-                               padding=1,
+                               out_channels=n_instruments,
                                kernel_size=1)
 
     def forward(self, x: torch.Tensor):
@@ -132,18 +206,17 @@ class WavenetBasedModel(nn.Module):
             residual, skip_out = res_block(residual)
             x += skip_out
             
-        x = torch.nn.functional.relu(x)
+        x = torch.relu(x)
         x = self.conv1(x)
-        x = torch.nn.functional.relu(x)
+        x = torch.relu(x)
         x = self.conv2(x)
-        x = torch.nn.functional.relu(x)
+        x = torch.relu(x)
         x = self.conv3(x)
 
-        x = x.squeeze(1)
         return x
 
 
-class WaveUModel(nn.Module):
+class WaveUModel(SourceSeparationModel):
     def __init__(self, hparams):
         super().__init__()
         self.hparams = hparams
@@ -229,4 +302,4 @@ class WaveUModel(nn.Module):
 
 
 # Set the default model    
-Model = SimpleConvolutionalModel
+Model = WavenetBasedModel

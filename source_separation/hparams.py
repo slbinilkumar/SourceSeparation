@@ -22,6 +22,7 @@ class HParams:
         
         # Duration of a single chunk in seconds
         self.chunk_duration = 5
+        self.chunk_size = int(self.chunk_duration * self.sample_rate)
         
         # Chunks will be discarded during training if there aren't enough instruments playing for
         # long enough. We take the proportion of the duration for which each instrument plays

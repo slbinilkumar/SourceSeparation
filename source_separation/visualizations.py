@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import webbrowser
 import visdom
+from source_separation.data_objects import get_instrument_name
 
 
 class Visualizations:
@@ -11,6 +12,8 @@ class Visualizations:
         # Set the environement name with the current time
         now = str(datetime.now().strftime("%d-%m %Hh%M"))
         self.env_name = now if env_name is None else "%s (%s)" % (env_name, now)
+        # FIXME
+        self.env_name = env_name
         
         # Connect to a visdom instance
         try:
@@ -25,7 +28,8 @@ class Visualizations:
         self.loss_win = None
         self.lr_win = None
         self.implementation_win = None
-        self.projection_win = None
+        self.waveforms_win = None
+        self.audio_wins = []
         self.loss_buffer = []
         self.implementation_string = ""
         self.last_step = -1
@@ -67,39 +71,42 @@ class Visualizations:
             )
         )
         
-        # Plot the learning rate
-        self.lr_win = self.vis.line(
-            [lr],
-            [step],
-            win=self.lr_win,
-            update="append" if self.lr_win else None,
-            opts=dict(
-                xlabel="Step",
-                ylabel="Learning rate",
-                ytype="log",
-                title="Learning rate"
-            )
-        )
+        # # Plot the learning rate
+        # self.lr_win = self.vis.line(
+        #     [lr],
+        #     [step],
+        #     win=self.lr_win,
+        #     update="append" if self.lr_win else None,
+        #     opts=dict(
+        #         xlabel="Step",
+        #         ylabel="Learning rate",
+        #         ytype="log",
+        #         title="Learning rate"
+        #     )
+        # )
         
-    # def draw_projections(self, embeds, utterances_per_speaker, step, out_fpath=None,
-    #                      max_speakers=10):
-    #     max_speakers = min(max_speakers, len(colormap))
-    #     embeds = embeds[:max_speakers * utterances_per_speaker]
-    #     
-    #     n_speakers = len(embeds) // utterances_per_speaker
-    #     ground_truth = np.repeat(np.arange(n_speakers), utterances_per_speaker)
-    #     colors = [colormap[i] for i in ground_truth]
-    #     
-    #     reducer = umap.UMAP()
-    #     projected = reducer.fit_transform(embeds)
-    #     plt.scatter(projected[:, 0], projected[:, 1], c=colors)
-    #     plt.gca().set_aspect("equal", "datalim")
-    #     plt.title("UMAP projection (step %d)" % step)
-    #     self.projection_win = self.vis.matplot(plt, win=self.projection_win)
-    #     if out_fpath is not None:
-    #         plt.savefig(out_fpath)
-    #     plt.clf()
+    def draw_waveform(self, y_pred, y_true, instruments):
+        # Waveform plots
+        fig, axs = plt.subplots(len(y_pred), 2)
+        for i, y in enumerate([y_true, y_pred]):
+            for j, yj in enumerate(y):
+                ax = axs[j, i]
+                ax.plot(yj)
+                ax.set_ylim(-1.05, 1.05)
+        self.waveforms_win = self.vis.matplot(fig, win=self.waveforms_win)
+        plt.close(fig)
+        
+        # Audios
+        self.audio_wins.extend([None] * (len(y_pred) - len(self.audio_wins)))
+        for i in range(len(y_pred)):
+            # This is a stupid fix to prevent visdom from normalizing the audio
+            y_pred[i][-1] = 1
+            y_pred[i][-2] = -1
+            self.audio_wins[i] = self.vis.audio(y_pred[i], win=self.audio_wins[i], opts=dict(
+                title=get_instrument_name(instruments[i])
+            ))
         
     def save(self):
         self.vis.save([self.env_name])
+        
         

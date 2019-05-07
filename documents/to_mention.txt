@@ -13,7 +13,7 @@
 - Embeddings
 - Ablation study:
     - Chunk discard vs no chunk discard
-    - MSE vs spectrogram loss
+    - MSE vs spectrogram loss vs MAE
     - Constraint on the waveform sum
     
 - Why source separation:
@@ -22,6 +22,130 @@
     - We can generate speech that is better than human
     - We can upscale images
     - But we can't separate instruments in a song??? Humans can more or less do it
+    
+- MOS isn't really good for this, humans can easily detect the artifacts
+    
+- Model architecture tests:
+    * 4_convs, batch_size=1, loss=mae, inner_channels=15, max_step=1000, output=softmax,
+      instruments="-1,0,48,33"
+    - init
+        -> Audio quality isn't so good.
+        -> Worth trying to increase the parameters to try and improve that
+    - inner50: inner_channels from 15 to 50
+        -> Even harder to converge initially (tunnels everything to the biggest waveform)
+        -> Didn't even converge!
+    - inner25: inner_channels from 50 to 25
+        -> Curiously doesn't converge either...
+    
+    -> After multiple runs, I conclude that some inits converge and some don't.
+    -> For the sake of trying to assess if the quality increases with the number of parameters, I'll first
+       try to get this to converge
+    - inner50: inner_channels from 25 to 50
+        -> Didn't succeed in converging
+        -> Adding weight decay makes the loss stagnate less often, another loss function is worth trying
+        
+    * loss=mse, inner_channels=15
+    - mse_init
+        -> The loss is stuck here also. I'll try the spectrogram loss, but it seems that fixing this would mostly imply changing the model. I don't like that, because the model was able to converge earlier. I also have got to try changing the output layer, I'll do that after.
+        
+    * loss=spectrogram
+    - spec_init
+        -> Yep, also plateauing.
+    
+    * loss=mse, output=none
+    - no_out_inner15
+        -> Converges to zero waveforms
+        -> Not too unexpected, that's why I put the softmax in the first place
+    - compl_init: complementary output: the network predicts n - 1 instruments, and the remaining signal is
+      derived so as to sum to x.
+        -> Still outputs zero in the other waveforms...
+        -> Let's remove zero-waveforms for now
+        
+    * instruments from "-1,0,48,33" to "-1,48"
+    - compl_init_nz
+        -> Nothing is separated either
+    - compl_init_spec: loss=spectrogram
+        -> Very interesting behaviour. How about mixing mae and spectrogram?
+    - compl_init_spec_max: loss=spectrogram+mae
+!       -> Yep! That works.
+        -> Playing with the factor on the mae has an impact on the quality of the separation
+    - compl_init_spec_comb: 
+        -> constant beta scale: loss explodes
+        -> adjusting scale: loss remains constant
+        -> tuned parameters: best option:
+            -> Only the spectrogram loss initially: doesn't always converge
+            -> Only the mae loss initially: converges to 0
+            -> spec + beta * mae: converges initially if beta is tuned so that both losses are close
+            -> Once the loss has decreased enough, beta can be increased to improve the quality
+                -> One order of magnitude above spec is good
+                -> Above that, it returns to zeroing out waveforms
+    
+    -> Let's try to get back to the muted instruments
+    * instruments from "-1,48" to "-1,0,48,33"
+    - comb_full:
+        -> Now generates mostly noise...
+        -> A lot of the "extra waveform" is thrown out to the last instrument
+!       -> Residual connections helps a lot! (but they create artifacts of the original waveform!)
+        -> Increasing beta now doesn't seem to do much anymore
+        -> Presenting x at the end:             Spec loss: 36.611   Mae*Beta loss: 166.889
+        -> Not presenting it:                   Spec loss: 25.309   Mae*Beta loss: 262.269
+        -> Without constraint on the output:    Spec loss: 25.914   Mae*Beta loss: 11.641
+!           -> But it doesn't sound so good
+    
+    -> I'll increase the number of filters now to try to overfit better, I assume it should finally start converging
+    - 2_init_50: inner_channels from 15 to 50, no constraint on the output
+        -> Putting a tanh or clamp at the end makes it all go to 1. No idea why.
+        -> For 600 steps:
+            - init:             Spec loss: 47.588   Mae*Beta loss: 31.585
+    
+    -> I give up on shaping the output explicitely. Moving on to the wavenet based model
+    -> Reminds me that I've got to see if I can reduce the length of the chunks
+    
+    * model: wavenet-based
+    - wavn_init
+        -> Works really well. That's good.
+        -> Trying to adjust the chunk duration:
+            - 5000ms:       Spec loss: 20.815   Mae*Beta loss: 8.168
+            -  100ms:       Spec loss: 19.950   Mae*Beta loss: 15.229
+!       -> Converges only a bit slower with 50x less data
+            -> That's good for speed
+            -> That's good for RAM usage
+    
+    - Chunk length
+    - Loss
+    - Dissimilarity loss
+    - Learning rate
+    - More layers
+    
+    - Model trained
+    - Code cleanup 
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
     

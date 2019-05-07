@@ -10,7 +10,7 @@ import torch
 
 
 class MidiDataset:
-    def __init__(self, root: Path, is_train: bool, hparams: HParams):
+    def __init__(self, root: Path, is_train: bool, chunk_size: int, hparams: HParams):
         """
         Creates a dataset that synthesizes instrument tracks from midi files. Call 
         MidiDataset.generate() to iterate over the dataset and retrieve pairs of fixed-size 
@@ -22,6 +22,7 @@ class MidiDataset:
         :param is_train: if True, the train index file is used. Otherwise, the test index file 
         will be used. 
         """
+        self.chunk_size = chunk_size
         self.hparams = hparams
         self.epochs = 0
         self.epoch_progress = 0.
@@ -149,8 +150,7 @@ class MidiDataset:
                 # Yield the chunks as a batch
                 yield self._collate(chunks, instruments)
                 
-        # TODO: prefetch
-        
+        # TODO: prefetch?
         return generator(chunk_pool, chunk_pool_uses, buffer)
     
     def _collate(self, chunks, instruments):
@@ -159,7 +159,7 @@ class MidiDataset:
         """
         # Expand the target to also contain instruments that do not appear in the music
         x = np.array([chunk[0] for chunk in chunks])
-        y = np.zeros((x.shape[0], len(instruments), x.shape[1]))
+        y = np.zeros((x.shape[0], len(instruments), x.shape[1]), dtype=np.float32)
         for i in range(len(chunks)):
             for instrument_chunk, instrument in zip(chunks[i][1], chunks[i][2]):
                 index = instruments.index(instrument)
@@ -186,7 +186,7 @@ class MidiDataset:
         
         # Ignore songs that are too long (prevents corrupted midis from blocking the sampling)
         if music.mid.length > self.hparams.max_midi_duration:
-            return np.array([]), np.array([]) 
+            return []
 
         # Generate a waveform for the reference (source) audio and the target audio the network
         # had to produce.
@@ -194,20 +194,21 @@ class MidiDataset:
         target_wavs = [music.generate_waveform([i]) for i in instruments]
         
         # Pad waveforms to a multiple of the chunk size
-        chunk_size = self.hparams.chunk_duration * self.hparams.sample_rate
-        padding = chunk_size - (len(target_wavs[0]) % chunk_size)
+        padding = self.chunk_size - (len(target_wavs[0]) % self.chunk_size)
         target_wavs = np.array([np.pad(wav, (0, padding), "constant") for wav in target_wavs])
         
         # Iterate over the waveforms to create chunks
         chunks = []
-        for i in range(0, len(target_wavs[0]), chunk_size):
+        for i in range(0, len(target_wavs[0]), self.chunk_size):
             # Cut a chunk from the waveform, and sum these chunks to create the mixed source signal
-            target_chunks = np.array([wav[i:i + chunk_size] for wav in target_wavs])
+            target_chunks = np.array([wav[i:i + self.chunk_size] for wav in target_wavs])
             source_chunk = np.sum(target_chunks, axis=0)
             
             # Normalize chunks by the same constant, so that they remain within [-1, 1] and that
             # the sum of the target chunks remains exactly equal to the source chunk.
             max_sample = np.abs(source_chunk).max()
+            if max_sample <= self.hparams.silence_threshold:
+                continue
             target_chunks /= max_sample
             source_chunk /= max_sample
             

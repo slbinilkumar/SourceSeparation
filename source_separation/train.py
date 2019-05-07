@@ -1,7 +1,7 @@
 from source_separation.visualizations import Visualizations
 from source_separation.data_objects import MidiDataset
 from source_separation.hparams import HParams
-from source_separation.model import Model, spectrogram_loss, mse_loss
+from source_separation.model import Model, spectrogram_loss, mae_loss, mse_loss, CombinedLoss
 from pathlib import Path
 import numpy as np
 import torch
@@ -9,12 +9,13 @@ import torch
 
 def train(args, hparams: HParams):
     # Initialize visdom
-    vis = Visualizations(args.run_name, averaging_window=25, auto_open_browser=False)
+    vis = Visualizations(args.run_name, averaging_window=25, auto_open_browser=True)
     
-    # Create the dataset
+    # Create the datasets
     dataset = MidiDataset(
         root=args.dataset_root,
         is_train=True,
+        chunk_size=hparams.chunk_size,
         hparams=hparams,
     )
     data_iterator = dataset.generate(
@@ -24,41 +25,36 @@ def train(args, hparams: HParams):
         chunk_reuse=args.chunk_reuse,
         chunk_pool_size=args.pool_size,
     )
-    # # If quickstart is enabled, load a precomputed pool from disk or build one if it 
-    # # doesn't exist yet.
-    # if quickstart:
-    #     chunk_pool_fpath = Path("quickstart_%s.npy" % "_".join(map(str, instruments)))
-    #     if not chunk_pool_fpath.exists():
-    #         chunk_pool, chunk_pool_uses, buffer = \
-    #             refill_chunk_pool(chunk_pool, chunk_pool_uses, buffer)
-    #         np.save(chunk_pool_fpath, chunk_pool[:chunk_pool_size])
-    #         print("Saved the quickstart pool to the disk!")
-    #     else:
-    #         print("Loading from the quickstart chunk pool.")
-    #         chunk_pool = list(np.load(chunk_pool_fpath))
-    #         chunk_pool_uses = [chunk_reuse] * chunk_pool_size
+    vis_dataset = MidiDataset(
+        root=args.dataset_root,
+        is_train=True,
+        chunk_size=10 * hparams.sample_rate,
+        hparams=hparams,
+    )
+    vis_data_iterator = vis_dataset.generate(
+        instruments=args.instruments,
+        batch_size=1,
+        n_threads=1,
+        chunk_pool_size=1,
+    )
 
     # Create the model and the optimizer
     model = Model(len(args.instruments), hparams).cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=hparams.learning_rate_init)
-    init_step = 1
+    optimizer = torch.optim.Adam(
+        model.parameters(), 
+        lr=hparams.learning_rate_init, 
+    )
 
     # Load any existing model
-    state_fpath = Path("%s.pt" % args.run_name)
+    Path("saved_models").mkdir(exist_ok=True)
+    state_fpath = Path("saved_models", "%s.pt" % args.run_name)
     if state_fpath.exists():
         print("Found existing model \"%s\", loading it and resuming training." % state_fpath)
-        checkpoint = torch.load(state_fpath)
-        model_instruments = checkpoint["instruments"]
-        assert np.array_equal(args.instruments, model_instruments), \
-            "A different set of instruments was used to train this model: %s vs %s" % \
-            (model_instruments, args.instruments)
-        init_step = checkpoint["step"]
-        model.load_state_dict(checkpoint["model_state"])
-        optimizer.load_state_dict(checkpoint["optimizer_state"])
-        optimizer.param_groups[0]["lr"] = hparams.learning_rate_init
+        init_step = model.load(state_fpath, optimizer, args.instruments, hparams)
     else:
         print("No model \"%s\" found, starting training from scratch." % state_fpath)
-        
+        init_step = 1
+
     # Set the model to training mode
     model.train()
     
@@ -69,21 +65,21 @@ def train(args, hparams: HParams):
     vis.log_implementation({"Device": device_name})
 
     # Training loop
+    loss_fn = CombinedLoss(hparams, 500, 5000, 100)
     loss_buffer = []
     for step, (x, y_true) in enumerate(data_iterator, init_step):
         # Forward pass and loss
         x, y_true = x.cuda(), y_true.cuda()
         y_pred = model(x)
-        # loss = spectrogram_loss(y_pred, y_true, hparams)
-        loss = mse_loss(y_pred, y_true)
+        loss = loss_fn(y_pred, y_true, step)
         
         # Visualizations
         loss_buffer.append(loss.item())
         if len(loss_buffer) > 25:
             del loss_buffer[0]
         vis.update(loss.item(), hparams.learning_rate_init, step)
-        print("Step %d   Avg. Loss %.4f   Loss %.4f" % 
-              (step, np.mean(loss_buffer), loss.item()))
+        # print("Step %d   Avg. Loss %.4f   Loss %.4f" % 
+        #       (step, np.mean(loss_buffer), loss.item()))
     
         # Backward pass
         model.zero_grad()
@@ -92,8 +88,8 @@ def train(args, hparams: HParams):
     
         # Overwrite the latest version of the model
         if args.save_every != 0 and step % args.save_every == 0:
-            vis.save()
             print("Saving the model (step %d)" % step)
+            vis.save()
             torch.save({
                 "instruments": args.instruments,
                 "step": step + 1,
@@ -103,3 +99,11 @@ def train(args, hparams: HParams):
             
             print("Current epoch: %d   Progress %.2f%%" % 
                   (dataset.epochs, dataset.epoch_progress * 100))
+            
+        # Draw the generated audio waveforms and plot them for comparison
+        if args.vis_every != 0 and step % args.vis_every == 0:
+            print("Creating visualizations, please wait... ", end="")
+            x, y_true = next(vis_data_iterator)
+            y_pred = model(x.cuda()).detach().cpu()
+            vis.draw_waveform(y_pred.numpy()[0], y_true.numpy()[0], args.instruments)
+            print("Done!")
