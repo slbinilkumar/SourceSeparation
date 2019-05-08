@@ -32,7 +32,7 @@ def mae_loss(y_pred, y_true):
     return torch.mean(torch.abs(y_pred - y_true))
 
 
-def mse_diff_loss(y_pred, y_true):
+def mae_diff_loss(y_pred, y_true):
     batch_size = y_pred.shape[0]
     n = y_pred.shape[1]
     
@@ -40,7 +40,7 @@ def mse_diff_loss(y_pred, y_true):
     mask0, mask1 = np.where(np.ones((n, n)))
     
     for yi_pred, yi_true in zip(y_pred, y_true):
-        sample_diff = torch.mean((yi_pred[mask0] - yi_true[mask1]) ** 2, dim=1)
+        sample_diff = torch.mean(torch.abs(yi_pred[mask0] - yi_true[mask1]), dim=1)
         diff_matrix[mask0, mask1] = diff_matrix[mask0, mask1] + sample_diff.cpu() 
     diff_matrix = diff_matrix / batch_size
 

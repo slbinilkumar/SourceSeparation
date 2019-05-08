@@ -1,7 +1,7 @@
 from source_separation.visualizations import Visualizations
 from source_separation.data_objects import MidiDataset
 from source_separation.hparams import HParams
-from source_separation.model import WavenetBasedModel, mse_loss
+from source_separation.model import WavenetBasedModel, mse_loss, mae_loss, spectrogram_loss, mae_diff_loss
 from pathlib import Path
 import torch
 
@@ -70,8 +70,10 @@ def train(args, hparams: HParams):
         # Forward pass and loss
         x, y_true = x.cuda(), y_true.cuda()
         y_pred = model(x)
-        loss = mse_loss(y_pred, y_true)
-        
+        a, b, _ = mae_diff_loss(y_pred, y_true)
+        loss = a + 0.2 * b
+        print("MAE loss: %.3f   Diff loss: %.3f" % (a.item(), 0.2 * b.item()))
+
         # Visualizations
         vis.plot_loss(loss.item(), step)
     

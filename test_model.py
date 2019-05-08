@@ -22,9 +22,12 @@ if __name__ == '__main__':
                         help="Comma-separated list of instruments ids. For a complete list of "
                              "available instruments: python -m "
                              "source_separation.data_objects.midi_instruments")
-    parser.add_argument("-d", "--chunk_duration", default=5, type=int,
-                        help="Duration of the chunks to be played, in seconds")
-    parser.add_argument("--sample_rate", default=44100, type=int)
+    parser.add_argument("-m", "--max_chunks_per_music", default=5, type=int,
+                        help="Limit on how many chunks to extract from a music. Set to -1 for no "
+                             "limit.")
+    parser.add_argument("-d", "--chunk_duration", default=0.1, type=float,
+                        help="Duration of the chunks, in seconds")
+    parser.add_argument("-b", "--batch_size", default=12, type=int)
     
     # Format the arguments
     args = parser.parse_args()
@@ -32,3 +35,4 @@ if __name__ == '__main__':
     args.instruments = list(map(int, args.instruments.split(",")))
 
     test(args, hparams)
+    

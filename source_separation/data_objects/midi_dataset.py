@@ -70,7 +70,7 @@ class MidiDataset:
                 for i, midi_fpath in enumerate(midi_fpaths, 1):
                     yield midi_fpath
                     self.debug_midi_fpaths.append(midi_fpath)
-                    if len(self.debug_midi_fpaths) > n_threads:
+                    if len(self.debug_midi_fpaths) > n_threads * 2:
                         del self.debug_midi_fpaths[0]
                     self.epoch_progress = i / len(midi_fpaths) 
                 self.epochs += 1

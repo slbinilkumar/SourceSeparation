@@ -111,14 +111,6 @@
             -> That's good for speed
             -> That's good for RAM usage
     
-    - Chunk length
-    - Loss
-    - Dissimilarity loss
-    - Learning rate
-    - More layers
-    
-    - Model trained
-    - Code cleanup 
     
     
     
@@ -128,8 +120,7 @@
     
     
     
-    
-    
+E:/Datasets/Midi/pop_midi_dataset_ismir/Big_Data_Set/M/M/madison_avenue-dont_call_me_baby.mid
     
     
     
