@@ -1,4 +1,3 @@
-from source_separation.data_objects import get_instrument_id
 from source_separation.hparams import hparams
 from source_separation.test import test
 from pathlib import Path
@@ -22,7 +21,7 @@ if __name__ == '__main__':
                         help="Comma-separated list of instruments ids. For a complete list of "
                              "available instruments: python -m "
                              "source_separation.data_objects.midi_instruments")
-    parser.add_argument("-m", "--max_chunks_per_music", default=5, type=int,
+    parser.add_argument("-m", "--max_chunks_per_music", default=10, type=int,
                         help="Limit on how many chunks to extract from a music. Set to -1 for no "
                              "limit.")
     parser.add_argument("-d", "--chunk_duration", default=0.1, type=float,

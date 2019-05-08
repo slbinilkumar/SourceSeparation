@@ -18,7 +18,8 @@ def test(args, hparams):
         instruments=args.instruments,
         batch_size=args.batch_size,
         n_threads=4,
-        chunk_pool_size=1,
+        max_chunks_per_music=args.max_chunks_per_music,
+        chunk_pool_size=args.batch_size,
     )
 
     # Load the model
@@ -42,10 +43,9 @@ def test(args, hparams):
             mae = mae_loss(y_pred, y_true)
             mse = mse_loss(y_pred, y_true)
             spec = spectrogram_loss(y_pred, y_true, hparams)
-            mae_diff1, mae_diff2, _ = mae_diff_loss(y_pred, y_true)
-            mae_diff = mae_diff1 + 0.05 * mae_diff2
+            _, mae_diff, _ = mae_diff_loss(y_pred, y_true)
 
-            losses.append([mae, mse, spec, mae_diff])
-            print("   Step: %4d:")
+            losses.append(np.array([mae, mse, spec, mae_diff]))
+            print("   Step: %4d:" % step)
             for loss, loss_name in zip(np.mean(losses, axis=0), loss_names):
-                print("%-4s: %.4f" % loss)
+                print("%-4s: %.4f" % (loss_name, loss))

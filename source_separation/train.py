@@ -70,9 +70,7 @@ def train(args, hparams: HParams):
         # Forward pass and loss
         x, y_true = x.cuda(), y_true.cuda()
         y_pred = model(x)
-        a, b, _ = mae_diff_loss(y_pred, y_true)
-        loss = a + 0.2 * b
-        print("MAE loss: %.3f   Diff loss: %.3f" % (a.item(), 0.2 * b.item()))
+        loss = mae_loss(y_pred, y_true)
 
         # Visualizations
         vis.plot_loss(loss.item(), step)

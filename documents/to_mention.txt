@@ -15,16 +15,7 @@
     - Chunk discard vs no chunk discard
     - MSE vs spectrogram loss vs MAE
     - Constraint on the waveform sum
-    
-- Why source separation:
-    - Intuitively, deep learning is good for tasks that humans are good at without consciously thinking.
-    - We can generate crazy images with GANs
-    - We can generate speech that is better than human
-    - We can upscale images
-    - But we can't separate instruments in a song??? Humans can more or less do it
-    
-- MOS isn't really good for this, humans can easily detect the artifacts
-    
+   
 - Model architecture tests:
     * 4_convs, batch_size=1, loss=mae, inner_channels=15, max_step=1000, output=softmax,
       instruments="-1,0,48,33"
