@@ -1,9 +1,8 @@
 from source_separation.visualizations import Visualizations
 from source_separation.data_objects import MidiDataset
 from source_separation.hparams import HParams
-from source_separation.model import Model, spectrogram_loss, mae_loss, mse_loss, CombinedLoss
+from source_separation.model import WavenetBasedModel, mse_loss
 from pathlib import Path
-import numpy as np
 import torch
 
 
@@ -15,31 +14,33 @@ def train(args, hparams: HParams):
     dataset = MidiDataset(
         root=args.dataset_root,
         is_train=True,
-        chunk_size=hparams.chunk_size,
+        chunk_size=int(args.chunk_duration * hparams.sample_rate),
         hparams=hparams,
     )
     data_iterator = dataset.generate(
         instruments=args.instruments,
         batch_size=args.batch_size,
         n_threads=4,
+        max_chunks_per_music=args.max_chunks_per_music,
         chunk_reuse=args.chunk_reuse,
         chunk_pool_size=args.pool_size,
     )
     vis_dataset = MidiDataset(
         root=args.dataset_root,
         is_train=True,
-        chunk_size=10 * hparams.sample_rate,
+        chunk_size=int(args.chunk_duration * hparams.sample_rate * args.batch_size),
         hparams=hparams,
     )
     vis_data_iterator = vis_dataset.generate(
         instruments=args.instruments,
         batch_size=1,
         n_threads=1,
+        max_chunks_per_music=1,
         chunk_pool_size=1,
     )
 
     # Create the model and the optimizer
-    model = Model(len(args.instruments), hparams).cuda()
+    model = WavenetBasedModel(len(args.instruments), hparams).cuda()
     optimizer = torch.optim.Adam(
         model.parameters(), 
         lr=hparams.learning_rate_init, 
@@ -65,21 +66,14 @@ def train(args, hparams: HParams):
     vis.log_implementation({"Device": device_name})
 
     # Training loop
-    loss_fn = CombinedLoss(hparams, 500, 5000, 100)
-    loss_buffer = []
     for step, (x, y_true) in enumerate(data_iterator, init_step):
         # Forward pass and loss
         x, y_true = x.cuda(), y_true.cuda()
         y_pred = model(x)
-        loss = loss_fn(y_pred, y_true, step)
+        loss = mse_loss(y_pred, y_true)
         
         # Visualizations
-        loss_buffer.append(loss.item())
-        if len(loss_buffer) > 25:
-            del loss_buffer[0]
-        vis.update(loss.item(), hparams.learning_rate_init, step)
-        # print("Step %d   Avg. Loss %.4f   Loss %.4f" % 
-        #       (step, np.mean(loss_buffer), loss.item()))
+        vis.plot_loss(loss.item(), step)
     
         # Backward pass
         model.zero_grad()
@@ -87,7 +81,7 @@ def train(args, hparams: HParams):
         optimizer.step()
     
         # Overwrite the latest version of the model
-        if args.save_every != 0 and step % args.save_every == 0:
+        if args.save_every != -1 and step % args.save_every == 0:
             print("Saving the model (step %d)" % step)
             vis.save()
             torch.save({
@@ -99,11 +93,14 @@ def train(args, hparams: HParams):
             
             print("Current epoch: %d   Progress %.2f%%" % 
                   (dataset.epochs, dataset.epoch_progress * 100))
-            
+
         # Draw the generated audio waveforms and plot them for comparison
-        if args.vis_every != 0 and step % args.vis_every == 0:
+        if args.vis_every != -1 and step % args.vis_every == 0:
             print("Creating visualizations, please wait... ", end="")
             x, y_true = next(vis_data_iterator)
             y_pred = model(x.cuda()).detach().cpu()
             vis.draw_waveform(y_pred.numpy()[0], y_true.numpy()[0], args.instruments)
             print("Done!")
+            
+            print(vis_dataset.debug_midi_fpaths)
+    

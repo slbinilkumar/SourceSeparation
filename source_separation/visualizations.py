@@ -1,5 +1,6 @@
 from datetime import datetime
-from time import perf_counter as clock
+import matplotlib
+matplotlib.use('QT4Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import webbrowser
@@ -12,8 +13,6 @@ class Visualizations:
         # Set the environement name with the current time
         now = str(datetime.now().strftime("%d-%m %Hh%M"))
         self.env_name = now if env_name is None else "%s (%s)" % (env_name, now)
-        # FIXME
-        self.env_name = env_name
         
         # Connect to a visdom instance
         try:
@@ -27,6 +26,7 @@ class Visualizations:
         self.averaging_window = averaging_window
         self.loss_win = None
         self.lr_win = None
+        self.diff_matrix_win = None
         self.implementation_win = None
         self.waveforms_win = None
         self.audio_wins = []
@@ -53,7 +53,7 @@ class Visualizations:
             opts={"title": "Training implementation"}
         )
 
-    def update(self, loss, lr, step):
+    def plot_loss(self, loss, step):
         # Plot the loss
         self.loss_buffer.append(loss)
         if len(self.loss_buffer) > self.averaging_window:
@@ -71,28 +71,29 @@ class Visualizations:
             )
         )
         
-        # # Plot the learning rate
-        # self.lr_win = self.vis.line(
-        #     [lr],
-        #     [step],
-        #     win=self.lr_win,
-        #     update="append" if self.lr_win else None,
-        #     opts=dict(
-        #         xlabel="Step",
-        #         ylabel="Learning rate",
-        #         ytype="log",
-        #         title="Learning rate"
-        #     )
-        # )
+    def plot_diff_matrix(self, diff_matrix, instruments):
+        labels = [get_instrument_name(i) for i in instruments]
+        self.diff_matrix_win = self.vis.heatmap(
+            diff_matrix,
+            win=self.diff_matrix_win,
+            opts=dict(
+                title="Difference matrix",
+                columnnames=labels,
+                rownames=labels,
+            )
+        )
         
     def draw_waveform(self, y_pred, y_true, instruments):
         # Waveform plots
         fig, axs = plt.subplots(len(y_pred), 2)
-        for i, y in enumerate([y_true, y_pred]):
-            for j, yj in enumerate(y):
-                ax = axs[j, i]
+        for i, (y, mode) in enumerate(zip([y_true, y_pred], ["Ground truth", "Prediction"])):
+            for j, (yj, instrument_id) in enumerate(zip(y, instruments)):
+                ax = axs[j, i]  # type: plt.Axes
                 ax.plot(yj)
+                ax.set_title("%s (%s)" % (get_instrument_name(instrument_id), mode))
                 ax.set_ylim(-1.05, 1.05)
+                ax.get_xaxis().set_visible(False)
+                ax.get_yaxis().set_visible(False)
         self.waveforms_win = self.vis.matplot(fig, win=self.waveforms_win)
         plt.close(fig)
         

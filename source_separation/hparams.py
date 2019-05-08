@@ -20,10 +20,6 @@ class HParams:
         # Max duration of a midi file in seconds (longer ones are discarded)
         self.max_midi_duration = 1800
         
-        # Duration of a single chunk in seconds
-        self.chunk_duration = 5
-        self.chunk_size = int(self.chunk_duration * self.sample_rate)
-        
         # Chunks will be discarded during training if there aren't enough instruments playing for
         # long enough. We take the proportion of the duration for which each instrument plays
         # individually and sum these proportions. If this value is lower than
@@ -31,17 +27,16 @@ class HParams:
         # (all chunks are accepted, even if silent) and the number of instruments selected (a chunk
         # is only accepted if all instruments play for the entire duration of the chunk).
         self.chunk_sum_prop_play_min = 0.8
+        
+        # List of instruments to use for training (hand picked from the most present instruments in 
+        # the dataset where very similar instruments were skipped).
+        self.default_instruments = [-1, 0, 48, 33, 25, 24, 52, 73, 4, 56]
 
     
         ## Models parameters
         # Initial learning rate
-        self.learning_rate_init = 0.01
+        self.learning_rate_init = 0.0001
         
-        
-        ## Training parameters
-        # List of instruments to use for training (hand picked from the most present instruments in 
-        # the dataset where very similar instruments were skipped).
-        self.default_instruments = [-1, 0, 48, 33, 25, 24, 52, 73, 4, 56]
         
     def update(self, **kwargs):
         self.__dict__.update(kwargs)

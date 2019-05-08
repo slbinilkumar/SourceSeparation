@@ -1,5 +1,4 @@
 from source_separation.data_objects import Music, get_instrument_name
-from source_separation.hparams import hparams
 from pathlib import Path
 import argparse
 import numpy as np
@@ -9,9 +8,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Displays the distribution of instruments in the "
                                                  "dataset.")
     parser.add_argument("dataset_root",
-                        help="Path to the root directory of any MIDI corpus. The MIDI files can be "
-                             "present alongside other types of files, and can be nested in "
-                             "directories.")
+                        help="Path to the directory containing your generated index files.")
     args = parser.parse_args()
     
     dataset_root = Path(args.dataset_root)

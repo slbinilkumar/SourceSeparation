@@ -80,6 +80,7 @@ class Music:
                            charset=self.mid.charset)
         new_mid.tracks = [t for t, i in zip(self.mid.tracks, self._track_to_instrument) if
                           i is None or i in instruments]
+        assert len(new_mid.tracks) != 0
         new_mid.save(temp_mid_fpath)
         
         # Synthesize the midi to a waveform
@@ -103,7 +104,7 @@ class Music:
                             "points to the soundfont in the same directory.")
         temp_wav_fpath.unlink()
         wav = wav.astype(np.float32) / 32767  # 16 bits signed to 32 bits floating point
-        wav = np.clip(wav, -1, 1)  # To correct finite precision errors
+        wav = np.clip(wav, -1, 1)
 
         # Pad or trim the waveform to the length of the track
         if synchronized and len(wav) > self.wav_length:

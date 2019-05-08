@@ -23,26 +23,24 @@ if __name__ == '__main__':
                              "available instruments: python -m "
                              "source_separation.data_objects.midi_instruments")
     parser.add_argument("-s", "--save_every", default=100, type=int,
-                        help="Number of steps between updates of the model on the disk. Set to 0"
+                        help="Number of steps between updates of the model on the disk. Set to -1"
                              "to disable saving the model.")
-    parser.add_argument("-v", "--vis_every", default=100, type=int,
+    parser.add_argument("-v", "--vis_every", default=50, type=int,
                         help="Number of steps between generating visualizations of the generated "
-                             "waveforms.")
+                             "waveforms. Set to -1 to disable visualizations.")
+    parser.add_argument("-m", "--max_chunks_per_music", default=5, type=int,
+                        help="Limit on how many chunks to extract from a music. Set to -1 for no "
+                             "limit.")
     parser.add_argument("-r", "--chunk_reuse", default=1, type=int,
                         help="Number of times a chunk is reused in training. Higher: more data-"
-                             "efficient but also more redundancy. Increase this value if ")
-    parser.add_argument("-p", "--pool_size", default=8, type=int,
+                             "efficient but also more redundancy. Increase this value if the"
+                             "data generation process is slower than the training.")
+    parser.add_argument("-p", "--pool_size", default=1000, type=int,
                         help="Size of the chunk pool. Higher means more domain variance in the "
-                             "input batches, but higher RAM usage. Set this to the batch size if"
-                             "chunk_reuse is set to 1, otherwise grow this parameter.")
-    parser.add_argument("-q", "--quickstart", action="store_true",
-                        help="If set, the first chunk pool will be cached to disk and reused at"
-                             "the beggining of subsequent trainings. If not, the pool must be "
-                             "refilled before each training.")
+                             "input batches, but higher RAM usage.")
     parser.add_argument("-d", "--chunk_duration", default=0.1, type=float,
                         help="Duration of the chunks, in seconds")
-    parser.add_argument("-b", "--batch_size", default=8, type=int)
-    parser.add_argument("-l", "--learning_rate_init", default=0.01, type=float)
+    parser.add_argument("-b", "--batch_size", default=12, type=int)
     
     # Format the arguments
     args = parser.parse_args()

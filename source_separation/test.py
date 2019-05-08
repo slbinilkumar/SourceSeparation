@@ -1,5 +1,5 @@
 from source_separation.data_objects import MidiDataset, get_instrument_name
-from source_separation.model import Model, spectrogram_loss
+from source_separation.model import Model
 from time import perf_counter as timer
 from pathlib import Path
 import sounddevice as sd
@@ -12,6 +12,7 @@ def test(args, hparams):
         root=args.dataset_root,
         is_train=False,
         hparams=hparams,
+        chunk_size=args.chunk_duration * hparams.sample_rate
     )
     
     dataloader = dataset.generate(
@@ -33,8 +34,7 @@ def test(args, hparams):
     print("\nPlaying clips one by one, press any key to go to the next one.\n")
     x = torch.from_numpy(np.load("x.npy"))
     y_true = torch.from_numpy(np.load("y_true.npy"))
-    while True:
-    # for x, y_true in dataloader:
+    for x, y_true in dataloader:
         with torch.no_grad():
             x, y_true = x.cuda(), y_true.cuda()
 
@@ -43,10 +43,6 @@ def test(args, hparams):
             y_pred = model(x)
             print("\nForwarded %d seconds of audio in %dms." % 
                   (args.chunk_duration, round((timer() - start) * 1000)))
-            
-            ## Compute the loss
-            # loss = spectrogram_loss(y_pred, y_true, hparams)
-            # print("Loss %.4f" % loss.item())
             
             # Process the waveforms for playing
             x = x.squeeze().cpu().numpy()

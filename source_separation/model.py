@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List
 from torch import nn
-import torch as f
 import torch
 import numpy as np
 
@@ -33,27 +32,27 @@ def mae_loss(y_pred, y_true):
     return torch.mean(torch.abs(y_pred - y_true))
 
 
+def mse_diff_loss(y_pred, y_true):
+    batch_size = y_pred.shape[0]
+    n = y_pred.shape[1]
+    
+    diff_matrix = torch.zeros(n, n)
+    mask0, mask1 = np.where(np.ones((n, n)))
+    
+    for yi_pred, yi_true in zip(y_pred, y_true):
+        sample_diff = torch.mean((yi_pred[mask0] - yi_true[mask1]) ** 2, dim=1)
+        diff_matrix[mask0, mask1] = diff_matrix[mask0, mask1] + sample_diff.cpu() 
+    diff_matrix = diff_matrix / batch_size
+
+    sim_loss = torch.mean(diff_matrix.diag())
+    diff_loss = -torch.mean(diff_matrix[np.where(1 - np.eye(n))])
+    
+    return sim_loss, diff_loss, diff_matrix.detach().numpy()
+
+    
 def mse_loss(y_pred, y_true):
     return torch.mean((y_pred - y_true) ** 2)
 
-
-class CombinedLoss:
-    def __init__(self, hparams, beta_init, beta_max, beta_step):
-        self.hparams = hparams
-        self.beta = beta_init
-        self.beta_max = beta_max
-        self.beta_step = beta_step
-        
-    def __call__(self, y_pred, y_true, step):
-        # if step >= self.beta_step:
-        #     self.beta = self.beta_max
-        
-        spec = spectrogram_loss(y_pred, y_true, self.hparams)
-        mae = mae_loss(y_pred, y_true)
-        print("Step %4d   Spec loss: %.3f   Mae*Beta loss: %.3f" % 
-              (step, spec.item(), self.beta * mae.item()))
-        return spec + self.beta * mae
-        
         
 class SourceSeparationModel(nn.Module):
     def __init__(self):
@@ -82,15 +81,6 @@ class SourceSeparationModel(nn.Module):
     def forward(self, *input):
         raise NotImplemented()
     
-    # def compute_output(self, x: torch.Tensor, features: torch.Tensor, n_instruments: int):
-    #     assert features.shape[1] == n_instruments - 1
-    #     
-    #     last_pred = x - features.sum(dim=1)
-    #     features = torch.cat((features, last_pred), dim=1)
-    #     y = features.clamp(-1, 1)
-    #     
-    #     return y
-
 
 class SimpleConvolutionalModel(SourceSeparationModel):
     def __init__(self, n_instruments, hparams):
@@ -123,19 +113,15 @@ class SimpleConvolutionalModel(SourceSeparationModel):
 
         # Shape: (batch, channels, seq_length)
         y1 = self.conv1(x)
-        y1 = torch.relu(y1)
+        y1 = torch.nn.functional.relu(y1, inplace=True)
         y1 = y1 + x
         y2 = self.conv2(y1)
-        y2 = torch.relu(y2)
+        y2 = torch.nn.functional.relu(y2, inplace=True)
         y2 = y2 + y1
         y3 = self.conv3(y2)
-        y3 = torch.relu(y3)
-        y4 = y3 + y2
-        # y4 = torch.cat((y4, x), dim=1)
-        y4 = self.conv4(y4)
-        # y4 = y4.clamp(-1, 1)
-        
-        # Go back to the other model if nothing comes out of it
+        y3 = torch.nn.functional.relu(y3, inplace=True)
+        y3 = y3 + y2
+        y4 = self.conv4(y3)
         
         return y4
 
@@ -144,27 +130,63 @@ class ResidualBlock(nn.Module):
     def __init__(self, in_channels, out_channels, dilation):
         super().__init__()
 
-        self.convs1 = nn.ModuleList([nn.Conv1d(in_channels=in_channels,
-                                               out_channels=out_channels,
-                                               padding=dilation,
-                                               kernel_size=3,
-                                               dilation=dilation)] * 2)
-        self.convs2 = nn.ModuleList([nn.Conv1d(in_channels=out_channels,
-                                               out_channels=out_channels,
-                                               padding=0,
-                                               kernel_size=1)] * 2)
+        self.conv1_1 = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            padding=dilation,
+            kernel_size=3,
+            dilation=dilation
+        )
+        self.conv1_2 = nn.Conv1d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            padding=dilation,
+            kernel_size=3,
+            dilation=dilation
+        )
+        self.conv2_1 = nn.Conv1d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=1
+        )
+        self.conv2_2 = nn.Conv1d(
+            in_channels=out_channels,
+            out_channels=out_channels,
+            kernel_size=1
+        )
 
     def forward(self, x: torch.Tensor):
-        branch1_0 = torch.tanh(self.convs1[0](x))
-        branch1_1 = torch.sigmoid(self.convs1[1](x))
-        branch1 = branch1_0 * branch1_1
-        branch2_0 = self.convs2[0](branch1)
-        branch2_1 = self.convs2[1](branch1)
+        branch1_1 = torch.tanh(self.conv1_1(x))
+        branch1_2 = torch.sigmoid(self.conv1_2(x))
+        branch1 = branch1_1 * branch1_2
+        branch2_1 = self.conv2_1(branch1)
+        branch2_2 = self.conv2_2(branch1)
 
-        residual_out = branch2_0 + x
-        skip_out = branch2_1
+        residual_out = branch2_1 + x
+        skip_out = branch2_2
         return residual_out, skip_out
+    
 
+class ResidualStack(nn.Module):
+    def __init__(self, k, n_layers, is_first):
+        super().__init__()
+        
+        self.k = k
+        self.blocks = nn.ModuleList([
+            ResidualBlock(
+                in_channels=(1 if (i == 0 and is_first) else k),
+                out_channels=k,
+                dilation=2 ** i
+            )
+            for i in range(n_layers)
+        ])
+
+    def forward(self, x: torch.Tensor):
+        skip_out = torch.zeros((x.shape[0], self.k, x.shape[2])).to(x.device)
+        for block in self.blocks:
+            x, skip = block(x)
+            skip_out += skip
+        return x, skip_out
 
 class WavenetBasedModel(SourceSeparationModel):
     def __init__(self, n_instruments, hparams):
@@ -172,45 +194,37 @@ class WavenetBasedModel(SourceSeparationModel):
         self.n_instruments = n_instruments
         self.hparams = hparams
 
-        self.k = 16
-        self.n_layers = 10
+        k = 128        # Number of inner channels in the blocks 
+        n_layers = 10  # Number of blocks per stack
+        r = 4          # Number of stacks in the model
 
         # Network definition
-        self.res_blocks = nn.ModuleList([
-            ResidualBlock(
-                in_channels=(1 if i == 0 else self.k),
-                out_channels=self.k,
-                dilation=2 ** i
-            )
-            for i in range(self.n_layers)
-        ])
-        self.conv1 = nn.Conv1d(in_channels=self.k,
-                               out_channels=self.k,
+        self.stacks = nn.ModuleList([ResidualStack(k, n_layers, i == 0) for i in range(r)])
+        self.conv1 = nn.Conv1d(in_channels=k,
+                               out_channels=512,
                                padding=1,
                                kernel_size=3)
-        self.conv2 = nn.Conv1d(in_channels=self.k,
-                               out_channels=self.k,
+        self.conv2 = nn.Conv1d(in_channels=512,
+                               out_channels=256,
                                padding=1,
                                kernel_size=3)
-        self.conv3 = nn.Conv1d(in_channels=self.k,
+        self.conv3 = nn.Conv1d(in_channels=256,
                                out_channels=n_instruments,
                                kernel_size=1)
 
     def forward(self, x: torch.Tensor):
         x = x.unsqueeze(1)
-
-        # Shape: (batch, channels, seq_length)
-        residual = x
-        x = torch.zeros((x.shape[0], self.k, x.shape[2])).to(x.device)
-        for res_block in self.res_blocks:
-            residual, skip_out = res_block(residual)
-            x += skip_out
+        
+        skip_out = None
+        for stack in self.stacks:
+            x, skip = stack(x)
+            skip_out = skip if skip_out is None else skip_out + skip
             
-        x = torch.relu(x)
+        x = torch.nn.functional.relu(skip_out, inplace=True)
         x = self.conv1(x)
-        x = torch.relu(x)
+        x = torch.nn.functional.relu(x, inplace=True)
         x = self.conv2(x)
-        x = torch.relu(x)
+        x = torch.nn.functional.relu(x, inplace=True)
         x = self.conv3(x)
 
         return x
@@ -300,6 +314,3 @@ class WaveUModel(SourceSeparationModel):
 
         return x
 
-
-# Set the default model    
-Model = WavenetBasedModel
