@@ -3,14 +3,15 @@ from source_separation.hparams import HParams
 from pathos.threading import ThreadPool
 from sklearn.utils import shuffle
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from time import perf_counter as timer
 import numpy as np
 import torch
 
 
 class MidiDataset:
-    def __init__(self, root: Path, is_train: bool, chunk_size: int, hparams: HParams):
+    def __init__(self, root: Optional[Path], is_train: Optional[bool], chunk_size: int, 
+                 hparams: HParams):
         """
         Creates a dataset that synthesizes instrument tracks from midi files. Call 
         MidiDataset.generate() to iterate over the dataset and retrieve pairs of fixed-size 
@@ -31,7 +32,9 @@ class MidiDataset:
         
         self.debug_midi_fpaths = []
 
-        # Build the index: a list of tuples (fpath, instruments) 
+        # Build the index: a list of tuples (fpath, instruments)
+        if root is None:
+            return 
         index_fname = "midi_%s_index.txt" % ("train" if is_train else "test")
         index_fpath = root.joinpath(index_fname)
         with index_fpath.open("r") as index_file:
@@ -84,7 +87,7 @@ class MidiDataset:
             self.musics_sampled += n_musics
             
             # Begin filling the buffer with threads from the threadpool 
-            func = lambda fpath: self._extract_chunks(fpath, instruments, max_chunks_per_music)
+            func = lambda fpath: self.extract_chunks(fpath, instruments, max_chunks_per_music)
             midi_fpaths = [next(midi_fpath_generator) for _ in range(n_musics)]
             return thread_pool.uimap(func, midi_fpaths)
         
@@ -150,11 +153,11 @@ class MidiDataset:
                     chunk_pool_uses.append(chunk_uses - 1)
 
                 # Yield the chunks as a batch
-                yield self._collate(chunks, instruments)
+                yield self.collate(chunks, instruments)
                 
         return generator(chunk_pool, chunk_pool_uses, buffer)
     
-    def _collate(self, chunks, instruments):
+    def collate(self, chunks, instruments):
         """
         Collates chunks into a batch.
         """
@@ -181,11 +184,11 @@ class MidiDataset:
             if sum((i in midi_instruments) for i in instruments) >= at_least:
                 yield midi_fpath
     
-    def _extract_chunks(self, midi_fpath, instruments, max_chunks_per_music=-1):
+    def extract_chunks(self, midi_fpath, instruments, max_chunks_per_music=-1, shuffled=True):
         # Load the midi file from disk
         try:
             music = Music(sample_rate=self.hparams.sample_rate, fpath=str(midi_fpath))
-        except:
+        except Exception as e:
             return []
         
         # Ignore songs that are too long (prevents corrupted midis from blocking the sampling)
@@ -206,14 +209,15 @@ class MidiDataset:
         
         # Iterate over the waveforms to create chunks
         chunks = []
-        for i in shuffle(range(0, len(target_wavs[0]), self.chunk_size)):
+        seq = shuffle if shuffled else list
+        for i in seq(range(0, len(target_wavs[0]), self.chunk_size)):
             # Cut a chunk from the waveform, and sum these chunks to create the mixed source signal
             target_chunks = np.array([wav[i:i + self.chunk_size] for wav in target_wavs])
             source_chunk = np.sum(target_chunks, axis=0)
             
             # Normalize chunks by the same constant, so that they remain within [-1, 1] and that
             # the sum of the target chunks remains exactly equal to the source chunk.
-            max_sample = np.abs(source_chunk).max()
+            max_sample = max(np.abs(source_chunk).max(), 1)
             if max_sample <= self.hparams.silence_threshold:
                 continue
             target_chunks /= max_sample

@@ -30,7 +30,8 @@ class HParams:
         
         # List of instruments to use for training (hand picked from the most present instruments in 
         # the dataset where very similar instruments were skipped).
-        self.default_instruments = [-1, 0, 48, 33, 25, 24, 52, 73, 4, 56]
+        self.default_instruments = [-1, 0, 48, 33]
+        # self.default_instruments = [-1, 0, 48, 33, 25, 24, 52, 73, 4, 56]
 
     
         ## Models parameters

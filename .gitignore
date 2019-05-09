@@ -17,3 +17,4 @@ venv
 dataset/
 source_separation/synthesizer/timidity.cfg
 .vscode/
+samples/
